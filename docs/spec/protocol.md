@@ -87,7 +87,7 @@ Both transports are always available, and the client chooses one each time it co
 
 **WebSocket.** Each frame is one envelope as JSON text, in both directions.
 
-**SSE.** Each SSE event carries one envelope as JSON in its `data` field, on a single line. Only `data` means anything: the server need not send `event`, `id` or `retry`, a client ignores them and any other field when they come, and the server ignores `Last-Event-ID`. Nothing is replayed after a drop; the client gets the whole room again in `porter:joined`. Client messages go to `POST /porter/commands`, one envelope per request. Before the first message of each connection the server sends one SSE comment (a line starting with `:`) of 2048 spaces, which an SSE parser ignores. It makes an intermediary that buffers small responses release the stream.
+**SSE.** Each SSE event carries one envelope as JSON in its `data` field, on a single line. Only `data` means anything: the server need not send `event`, `id` or `retry`, a client ignores them and any other field when they come, and the server ignores `Last-Event-ID`. Nothing is replayed after a drop; the client gets the whole room again in `porter:joined`. Client messages go to `POST /porter/commands`, one envelope per request. Before the first message of each connection the server sends one SSE event whose `data` is a `:` followed by 2048 spaces; NestJS's `@Sse` cannot emit a comment line. A client discards any event whose `data` starts with `:` before reading it as an envelope. It makes an intermediary that buffers small responses release the stream.
 
 ## Connecting
 

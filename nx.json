@@ -1,0 +1,23 @@
+{
+  "$schema": "./node_modules/nx/schemas/nx-schema.json",
+  "plugins": [
+    {
+      "plugin": "@nx/js/typescript",
+      "options": {
+        "typecheck": { "targetName": "typecheck" },
+        "build": { "targetName": "build", "configName": "tsconfig.lib.json" }
+      }
+    }
+  ],
+  "targetDefaults": {
+    "test": { "dependsOn": ["^build"] },
+    "dev": { "dependsOn": ["^build"], "continuous": true }
+  },
+  "release": {
+    "projects": ["packages/*"],
+    "projectsRelationship": "fixed",
+    "releaseTagPattern": "v{version}",
+    "version": { "conventionalCommits": true, "preserveLocalDependencyProtocols": true },
+    "changelog": { "workspaceChangelog": { "file": "{workspaceRoot}/CHANGELOG.md" }, "projectChangelogs": false }
+  }
+}

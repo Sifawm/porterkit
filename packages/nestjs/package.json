@@ -1,0 +1,56 @@
+{
+  "name": "@porterkit/nestjs",
+  "version": "0.0.0",
+  "description": "Porter's server: real-time rooms as a NestJS module.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Sifawm/porter",
+    "directory": "packages/nestjs"
+  },
+  "files": [
+    "dist",
+    "!**/*.tsbuildinfo"
+  ],
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@porterkit/contracts": "workspace:*"
+  },
+  "devDependencies": {
+    "@nestjs/common": "^11.0.0",
+    "@nestjs/core": "^11.0.0",
+    "@nestjs/platform-express": "^11.0.0",
+    "@nestjs/platform-fastify": "^11.0.0",
+    "@nestjs/platform-ws": "^11.0.0",
+    "@nestjs/testing": "^11.0.0",
+    "@nestjs/websockets": "^11.0.0",
+    "@types/ws": "^8.5.0",
+    "reflect-metadata": "^0.2.0",
+    "rxjs": "^7.8.0",
+    "ws": "^8.18.0"
+  },
+  "peerDependencies": {
+    "@nestjs/common": "^11.0.0",
+    "@nestjs/core": "^11.0.0",
+    "@nestjs/websockets": "^11.0.0",
+    "reflect-metadata": "^0.1.12 || ^0.2.0",
+    "rxjs": "^7.1.0"
+  },
+  "engines": {
+    "node": ">=22.12"
+  }
+}

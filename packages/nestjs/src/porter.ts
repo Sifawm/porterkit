@@ -1,0 +1,658 @@
+import { randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
+import { inspect } from 'node:util';
+import { Logger } from '@nestjs/common';
+import type {
+  CommandRejectReason,
+  ConnectRejectReason,
+  EndReason,
+  LoginRejectReason,
+  LoginResponse,
+  MatchStatus,
+} from '@porterkit/contracts';
+import { definitionOf, type Handler, handlersIn } from './decorators';
+import { type AnyDefinition, type GameContext, GameRejection, type PorterModuleOptions, type User } from './types';
+
+/** What an adapter gives Porter. `send` serializes the message before it returns. */
+export interface Sink {
+  send(message: { event: string; data?: unknown }): void;
+  close(): void;
+}
+
+/** What Porter gives an adapter. */
+export interface Connection {
+  /** One incoming envelope, not yet validated. */
+  receive(raw: unknown): void;
+  /** The transport reports that it dropped. */
+  closed(): void;
+}
+
+interface Registered {
+  definition: AnyDefinition;
+  manager: any;
+  handlers: Map<string, Handler>;
+}
+
+interface UserRec {
+  name: string;
+  profile: unknown;
+  secret: Buffer;
+  status: 'pending' | 'connected' | 'reconnecting';
+  sink?: Sink;
+  data: object;
+  ponged: boolean;
+  ping?: NodeJS.Timeout;
+  grace?: NodeJS.Timeout;
+  /** The User a Manager sees. */
+  view: User<any, any>;
+}
+
+interface Timer {
+  /** Milliseconds left when it last stopped, or when it was set. */
+  remaining: number;
+  endsAt: number;
+  handle?: NodeJS.Timeout;
+  callback: () => unknown;
+}
+
+interface Game {
+  entry: Registered;
+  settings: any;
+  state: object;
+  memory: unknown;
+  match: MatchStatus;
+  timers: Map<string, Timer>;
+  ctx: GameContext<any, any, any>;
+}
+
+interface RoomRec {
+  id: string;
+  /** In the order they joined, `pending` ones included. */
+  users: UserRec[];
+  admin: UserRec;
+  /** The Users that have been Admin, in order. The Admin is the last. */
+  line: UserRec[];
+  locked: boolean;
+  game: Game;
+}
+
+type Result<Reason> = { status: number; body?: { reason: Reason } };
+
+const DEFAULTS = { capacity: 16, maxNameLength: 20, maxProfileSize: 2048, pingInterval: 30_000, gracePeriod: 20_000 };
+
+const integerFrom = (min: number) => (value: unknown) => Number.isInteger(value) && (value as number) >= min;
+const positive = (value: unknown) => typeof value === 'number' && Number.isFinite(value) && value > 0;
+const VALID: Record<string, (value: unknown) => boolean> = {
+  capacity: integerFrom(1),
+  maxNameLength: integerFrom(1),
+  maxProfileSize: integerFrom(4),
+  pingInterval: positive,
+  gracePeriod: positive,
+  validateProfile: (value) => typeof value === 'function',
+};
+
+const COMMANDS = new Set([
+  'porter:lockRoom',
+  'porter:kickUser',
+  'porter:changeGame',
+  'porter:updateSettings',
+  'porter:startMatch',
+  'porter:pauseMatch',
+  'porter:continueMatch',
+  'porter:endMatch',
+]);
+
+const ROOM_ID = /^[a-z0-9]{10}$/;
+const TOKEN = /^([a-z0-9]{10})\.([A-Za-z0-9_-]{43})$/;
+const ALPHABET = 'abcdefghijklmnopqrstuvwxyz0123456789';
+
+const isObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+const isThenable = (value: unknown): value is PromiseLike<unknown> =>
+  typeof (value as { then?: unknown } | null)?.then === 'function';
+const underWay = (game: Game) => game.match.status === 'running' || game.match.status === 'paused';
+const isVisible = (user: UserRec) => user.status !== 'pending';
+const NO_CONNECTION: Connection = { receive() {}, closed() {} };
+
+/** The rooms and everything that happens in them. The transports and NestJS stay outside. */
+export class Porter {
+  private readonly logger = new Logger('Porter');
+  private readonly options: Required<Omit<PorterModuleOptions<any>, 'validateProfile'>> &
+    Pick<PorterModuleOptions<any>, 'validateProfile'>;
+  private readonly games = new Map<string, Registered>();
+  private readonly rooms = new Map<string, RoomRec>();
+
+  /** Throws when the options, the Managers or `initialGame` are not valid, in that order. */
+  constructor(options: PorterModuleOptions<any>, managers: object[]) {
+    for (const [option, valid] of Object.entries(VALID)) {
+      const value = (options as Record<string, any>)[option];
+      if (value !== undefined && !valid(value)) {
+        throw new Error(`Porter: the option ${option} is not valid: ${inspect(value)}`);
+      }
+    }
+    const given = Object.fromEntries(Object.entries(options).filter(([, value]) => value !== undefined));
+    this.options = { ...DEFAULTS, ...given } as typeof this.options;
+
+    for (const manager of managers) {
+      const definition = definitionOf(manager.constructor);
+      if (!definition) continue;
+      const first = this.games.get(definition.name);
+      if (first) {
+        throw new Error(
+          `Porter: the Game "${definition.name}" has two Managers: ${first.manager.constructor.name} and ${manager.constructor.name}`,
+        );
+      }
+      this.games.set(definition.name, { definition, manager, handlers: handlersIn(manager) });
+    }
+    if (this.games.size === 0) throw new Error('Porter: no Manager is registered');
+    if (!this.games.has(options.initialGame)) {
+      throw new Error(`Porter: initialGame "${options.initialGame}" names no registered Game`);
+    }
+  }
+
+  // ── HTTP ────────────────────────────────────────────────────────────────
+
+  async login(body: unknown): Promise<{ status: number; body: LoginResponse | { reason: LoginRejectReason } }> {
+    const refuse = (status: number, reason: LoginRejectReason) => ({ status, body: { reason } });
+    if (!isObject(body) || typeof body.name !== 'string') return refuse(400, 'invalidName');
+    const name = body.name.trim();
+    if (name === '' || name.length > this.options.maxNameLength) return refuse(400, 'invalidName');
+
+    const profile = body.profile ?? null;
+    if (Buffer.byteLength(JSON.stringify(profile)) > this.options.maxProfileSize) return refuse(400, 'invalidProfile');
+    try {
+      if (this.options.validateProfile && this.options.validateProfile(profile) !== true) {
+        return refuse(400, 'invalidProfile');
+      }
+    } catch (error) {
+      this.logError('validateProfile', error);
+      return refuse(400, 'invalidProfile');
+    }
+
+    let room: RoomRec | undefined;
+    if (body.roomId !== undefined) {
+      room = typeof body.roomId === 'string' && ROOM_ID.test(body.roomId) ? this.rooms.get(body.roomId) : undefined;
+      if (!room) return refuse(404, 'roomNotFound');
+      if (room.locked) return refuse(409, 'roomLocked');
+      if (room.users.length >= this.options.capacity) return refuse(409, 'roomFull');
+      const lower = name.toLowerCase();
+      if (room.users.some((user) => user.name.toLowerCase() === lower)) return refuse(409, 'nameTaken');
+    }
+
+    const secret = randomBytes(32);
+    const user: UserRec = { name, profile, secret, status: 'pending', data: {}, ponged: true, view: undefined! };
+    user.view = {
+      get name() {
+        return user.name;
+      },
+      get status() {
+        return user.status === 'connected' ? ('connected' as const) : ('reconnecting' as const);
+      },
+      get data() {
+        return user.data;
+      },
+      send: (event: string, data?: unknown) => this.send(user, event, data),
+    };
+
+    if (!room) {
+      const entry = this.games.get(this.options.initialGame)!;
+      try {
+        const settings = await entry.manager.defaultSettings();
+        let id: string;
+        do id = Array.from({ length: 10 }, () => ALPHABET[randomInt(ALPHABET.length)]).join('');
+        while (this.rooms.has(id));
+        room = { id, users: [], admin: user, line: [user], locked: false, game: undefined! };
+        room.game = this.createGame(room, entry, settings);
+        this.rooms.set(id, room);
+      } catch (error) {
+        this.logError(`game=${entry.definition.name} method=defaultSettings`, error);
+        return refuse(500, 'failed');
+      }
+    }
+    room.users.push(user);
+    this.startGrace(room, user);
+    return { status: 200, body: { token: `${room.id}.${secret.toString('base64url')}`, roomId: room.id } };
+  }
+
+  roomExists(id: string): boolean {
+    return this.rooms.has(id);
+  }
+
+  /** `POST /porter/commands`: a client message from whoever holds the Token. */
+  command(token: unknown, raw: unknown): Result<CommandRejectReason> {
+    const found = this.verify(token);
+    if ('reason' in found) return { status: 401, body: { reason: found.reason } };
+    if (found.user.status !== 'connected') return { status: 409, body: { reason: 'notConnected' } };
+    this.receive(found.room, found.user, raw);
+    return { status: 202 };
+  }
+
+  // ── Connections ─────────────────────────────────────────────────────────
+
+  connect(token: unknown, sink: Sink): Connection {
+    const found = this.verify(token);
+    if ('reason' in found) {
+      sink.send({ event: 'porter:rejected', data: { reason: found.reason } });
+      sink.close();
+      return NO_CONNECTION;
+    }
+    const { room, user } = found;
+    const before = user.status;
+
+    if (before === 'connected') {
+      const old = user.sink!;
+      this.detach(user);
+      old.send({ event: 'porter:replaced' });
+      old.close();
+    } else {
+      clearTimeout(user.grace);
+      if (before === 'pending') user.data = room.game.entry.definition.createUserData();
+    }
+    user.status = 'connected';
+    user.sink = sink;
+    user.ponged = true;
+    user.ping = setInterval(() => {
+      if (!user.ponged) {
+        // Dropped first: a transport may report the close before `close` returns.
+        this.drop(room, user);
+        return sink.close();
+      }
+      user.ponged = false;
+      this.send(user, 'porter:ping');
+    }, this.options.pingInterval);
+
+    // The Admin is settled first so `porter:joined` carries it, and announced after.
+    const earlier = room.line.indexOf(user) >= 0 && room.line.indexOf(user) < room.line.indexOf(room.admin);
+    const adminChanged =
+      before !== 'connected' && (earlier || room.admin.status !== 'connected') && this.setAdmin(room, user);
+
+    this.send(user, 'porter:joined', this.joined(room, user));
+    if (before === 'pending') {
+      const wire = { name: user.name, profile: user.profile, status: 'connected' };
+      this.broadcast(room, 'porter:userJoined', { user: wire }, user);
+    }
+    if (before === 'reconnecting') this.broadcast(room, 'porter:userReconnected', { name: user.name }, user);
+    if (adminChanged) this.broadcast(room, 'porter:adminChanged', { admin: user.name });
+
+    return {
+      receive: (raw) => {
+        if (user.sink === sink) this.receive(room, user, raw);
+      },
+      closed: () => {
+        if (user.sink === sink) this.drop(room, user);
+      },
+    };
+  }
+
+  /** Closes every connection and clears every timer. */
+  destroy(): void {
+    for (const room of this.rooms.values()) {
+      for (const user of room.users) {
+        const sink = user.sink;
+        this.detach(user);
+        clearTimeout(user.grace);
+        sink?.close();
+      }
+      this.destroyRoom(room);
+    }
+  }
+
+  private verify(token: unknown): { room: RoomRec; user: UserRec } | { reason: ConnectRejectReason } {
+    const match = typeof token === 'string' ? TOKEN.exec(token) : null;
+    if (!match) return { reason: 'invalidToken' };
+    const room = this.rooms.get(match[1]);
+    if (!room) return { reason: 'roomNotFound' };
+    const secret = Buffer.from(match[2], 'base64url');
+    const user = room.users.find((u) => secret.length === u.secret.length && timingSafeEqual(secret, u.secret));
+    return user ? { room, user } : { reason: 'notInRoom' };
+  }
+
+  private joined(room: RoomRec, user: UserRec) {
+    const { game } = room;
+    const users = room.users.filter(isVisible);
+    const timers = Object.fromEntries([...game.timers].map(([name, timer]) => [name, this.remaining(game, timer)]));
+    return {
+      roomId: room.id,
+      you: user.name,
+      admin: room.admin.name,
+      locked: room.locked,
+      pingInterval: this.options.pingInterval,
+      users: users.map((u) => ({ name: u.name, profile: u.profile, status: u.status })),
+      game: {
+        name: game.entry.definition.name,
+        settings: game.settings,
+        state: game.state,
+        userData: Object.fromEntries(users.map((u) => [u.name, u.data])),
+        match: underWay(game) ? { ...game.match, timers } : game.match,
+      },
+    };
+  }
+
+  private detach(user: UserRec) {
+    clearInterval(user.ping);
+    user.sink = undefined;
+  }
+
+  private startGrace(room: RoomRec, user: UserRec) {
+    user.grace = setTimeout(() => this.leave(room, user, 'timeout'), this.options.gracePeriod);
+  }
+
+  /** The User's connection is gone: it is `reconnecting` and its Grace period runs. */
+  private drop(room: RoomRec, user: UserRec) {
+    this.detach(user);
+    user.status = 'reconnecting';
+    this.startGrace(room, user);
+    this.broadcast(room, 'porter:userDisconnected', { name: user.name });
+    if (room.admin === user) {
+      const next = room.users.find((u) => u.status === 'connected');
+      if (next && this.setAdmin(room, next)) this.broadcast(room, 'porter:adminChanged', { admin: next.name });
+    }
+    if (underWay(room.game)) this.hook(room, 'onUserDisconnected', user.view);
+  }
+
+  /** The User is out of the room, whatever state it was in. */
+  private leave(room: RoomRec, user: UserRec, reason: 'timeout' | 'kicked') {
+    const wasVisible = isVisible(user);
+    this.detach(user);
+    clearTimeout(user.grace);
+    room.users.splice(room.users.indexOf(user), 1);
+    room.line = room.line.filter((u) => u !== user);
+    if (wasVisible) this.broadcast(room, 'porter:userLeft', { name: user.name, reason });
+    if (room.admin === user && room.users.length > 0) {
+      const next = (['connected', 'reconnecting', 'pending'] as const)
+        .map((status) => room.users.find((u) => u.status === status))
+        .find((u) => u !== undefined)!;
+      this.setAdmin(room, next);
+      this.broadcast(room, 'porter:adminChanged', { admin: next.name });
+    }
+    if (wasVisible && underWay(room.game)) {
+      if (room.users.filter(isVisible).length < room.game.entry.definition.minPlayers) {
+        this.end(room, { by: 'minPlayers' });
+      } else {
+        this.hook(room, 'onUserLeft', user.view);
+      }
+    }
+    // The Game has heard the end of its Match before the room goes.
+    if (room.users.length === 0) this.destroyRoom(room);
+  }
+
+  private destroyRoom(room: RoomRec) {
+    for (const timer of room.game.timers.values()) clearTimeout(timer.handle);
+    room.game.timers.clear();
+    this.rooms.delete(room.id);
+  }
+
+  private setAdmin(room: RoomRec, user: UserRec): boolean {
+    if (room.admin === user) return false;
+    const at = room.line.indexOf(user);
+    if (at >= 0) room.line.length = at + 1;
+    else room.line.push(user);
+    room.admin = user;
+    return true;
+  }
+
+  private send(user: UserRec, event: string, data?: unknown) {
+    user.sink?.send(data === undefined ? { event } : { event, data });
+  }
+
+  private broadcast(room: RoomRec, event: string, data?: unknown, except?: UserRec) {
+    for (const user of room.users) if (user !== except) this.send(user, event, data);
+  }
+
+  // ── Messages ────────────────────────────────────────────────────────────
+
+  private receive(room: RoomRec, user: UserRec, raw: unknown) {
+    try {
+      this.dispatch(room, user, raw);
+    } catch (error) {
+      this.logError(`room=${room.id} user=${user.name}`, error);
+    }
+  }
+
+  private dispatch(room: RoomRec, user: UserRec, raw: unknown) {
+    const reject = (reason: unknown) =>
+      this.send(user, 'porter:messageRejected', { rejected: isObject(raw) ? raw.event : '', reason });
+    if (!isObject(raw) || typeof raw.event !== 'string') {
+      return this.send(user, 'porter:messageRejected', { rejected: '', reason: 'malformed' });
+    }
+    const { event, data } = raw;
+    const { game } = room;
+    const { manager, definition } = game.entry;
+    /** Answers the sender for what the Game's code threw. */
+    const thrown = (what: string) => (error: unknown) => {
+      if (error instanceof GameRejection) return reject({ code: 'game', reason: error.reason });
+      reject('failed');
+      this.logError(`room=${room.id} game=${definition.name} ${what}`, error);
+    };
+    /** Runs a synchronous method of the Game. `false` when it threw and the sender has been answered. */
+    const veto = (method: string, ...args: unknown[]) => {
+      try {
+        this.detachPromise(manager[method](game.ctx, ...args), room, `method=${method}`);
+        return true;
+      } catch (error) {
+        thrown(`method=${method}`)(error);
+        return false;
+      }
+    };
+
+    if (event === 'porter:pong') return void (user.ponged = true);
+
+    if (!event.startsWith('porter:')) {
+      const handler = game.entry.handlers.get(event);
+      if (!handler) return reject('unhandled');
+      if (handler.adminOnly && room.admin !== user) return reject('notAdmin');
+      try {
+        if (handler.guard && !handler.guard(data)) return reject('malformed');
+        if (!handler.anyTime && !underWay(game)) return reject('notAllowedNow');
+        const result = manager[handler.method](game.ctx, data, user.view);
+        if (isThenable(result)) result.then(undefined, thrown(`message=${event}`));
+      } catch (error) {
+        thrown(`message=${event}`)(error);
+      }
+      return;
+    }
+
+    if (!COMMANDS.has(event)) return reject('unhandled');
+    if (room.admin !== user) return reject('notAdmin');
+
+    switch (event) {
+      case 'porter:lockRoom': {
+        if (!isObject(data) || typeof data.locked !== 'boolean') return reject('malformed');
+        room.locked = data.locked;
+        return this.broadcast(room, 'porter:roomLocked', { locked: room.locked });
+      }
+      case 'porter:kickUser': {
+        if (!isObject(data) || typeof data.name !== 'string') return reject('malformed');
+        if (data.name === user.name) return reject('notAllowedNow');
+        const target = room.users.find((u) => isVisible(u) && u.name === data.name);
+        if (!target) return reject('notFound');
+        const sink = target.sink;
+        sink?.send({ event: 'porter:kicked' });
+        this.detach(target);
+        sink?.close();
+        return this.leave(room, target, 'kicked');
+      }
+      case 'porter:changeGame': {
+        if (!isObject(data) || typeof data.game !== 'string') return reject('malformed');
+        if (underWay(game)) return reject('notAllowedNow');
+        const entry = this.games.get(data.game);
+        if (!entry) return reject('notFound');
+        const load = async () => {
+          const settings = await entry.manager.defaultSettings();
+          if (this.rooms.get(room.id) !== room) return;
+          if (underWay(room.game)) return reject('notAllowedNow');
+          room.game = this.createGame(room, entry, settings);
+          this.broadcast(room, 'porter:gameChanged', { game: entry.definition.name, settings: room.game.settings });
+        };
+        return void load().catch((error) => {
+          reject('failed');
+          this.logError(`room=${room.id} game=${entry.definition.name} method=defaultSettings`, error);
+        });
+      }
+      case 'porter:updateSettings': {
+        if (typeof data !== 'object' || data === null) return reject('malformed');
+        if (veto('updateSettings', data)) this.broadcast(room, 'porter:settingsUpdated', game.settings);
+        return;
+      }
+      case 'porter:startMatch': {
+        if (underWay(game)) return reject('notAllowedNow');
+        if (room.users.filter(isVisible).length < definition.minPlayers) return reject('belowMinPlayers');
+        if (typeof manager.canStart === 'function' && !veto('canStart')) return;
+        this.fresh(room, game);
+        game.match = { status: 'running' };
+        this.broadcast(room, 'porter:matchStarted');
+        return this.hook(room, 'onStart');
+      }
+      case 'porter:pauseMatch': {
+        if (!isObject(data)) return reject('malformed');
+        if (game.match.status !== 'running') return reject('notAllowedNow');
+        const reason = data.reason ?? null;
+        for (const timer of game.timers.values()) {
+          clearTimeout(timer.handle);
+          timer.remaining = Math.max(0, timer.endsAt - Date.now());
+        }
+        game.match = { status: 'paused', reason };
+        this.broadcast(room, 'porter:matchPaused', { reason });
+        return this.hook(room, 'onPause', reason);
+      }
+      case 'porter:continueMatch': {
+        if (game.match.status !== 'paused') return reject('notAllowedNow');
+        game.match = { status: 'running' };
+        for (const [name, timer] of game.timers) this.run(room, game, name, timer);
+        this.broadcast(room, 'porter:matchContinued');
+        return this.hook(room, 'onContinue');
+      }
+      case 'porter:endMatch': {
+        if (!underWay(game)) return reject('notAllowedNow');
+        return this.end(room, { by: 'admin' });
+      }
+    }
+  }
+
+  // ── Games and Matches ───────────────────────────────────────────────────
+
+  private createGame(room: RoomRec, entry: Registered, settingsData: unknown): Game {
+    const settings = entry.definition.createSettings();
+    settings.set(settingsData);
+    const game: Game = {
+      entry,
+      settings,
+      state: {},
+      memory: undefined,
+      match: { status: 'idle' },
+      timers: new Map(),
+      ctx: undefined!,
+    };
+    game.ctx = this.context(room, game);
+    this.fresh(room, game);
+    return game;
+  }
+
+  /** New state, per-User data and Match memory. */
+  private fresh(room: RoomRec, game: Game) {
+    const { definition, manager } = game.entry;
+    game.state = definition.createState();
+    for (const user of room.users) if (isVisible(user)) user.data = definition.createUserData();
+    game.memory = typeof manager.createMemory === 'function' ? manager.createMemory() : undefined;
+  }
+
+  private context(room: RoomRec, game: Game): GameContext<any, any, any> {
+    const active = () => room.game === game && this.rooms.get(room.id) === room;
+    return {
+      room: {
+        id: room.id,
+        get admin() {
+          return room.admin.name;
+        },
+        get users() {
+          return room.users.filter(isVisible).map((u) => u.view);
+        },
+        get connected() {
+          return room.users.filter((u) => u.status === 'connected').map((u) => u.view);
+        },
+        user: (name: string) => room.users.find((u) => isVisible(u) && u.name === name)?.view,
+        broadcast: (event: string, data?: unknown) => {
+          if (active()) this.broadcast(room, event, data);
+        },
+      },
+      game: {
+        settings: game.settings,
+        get state() {
+          return game.state;
+        },
+      },
+      get memory() {
+        return game.memory;
+      },
+      timers: {
+        set: (name, ms, callback) => {
+          if (!active() || !underWay(game)) throw new Error(`Match timer "${name}" set without a Match under way`);
+          if (!Number.isFinite(ms) || ms <= 0) throw new Error(`Match timer "${name}" set to ${ms} ms`);
+          clearTimeout(game.timers.get(name)?.handle);
+          const timer: Timer = { remaining: ms, endsAt: 0, callback };
+          game.timers.set(name, timer);
+          if (game.match.status === 'running') this.run(room, game, name, timer);
+          this.broadcast(room, 'porter:timerSet', { name, remaining: ms });
+        },
+        clear: (name) => {
+          const timer = game.timers.get(name);
+          if (!timer) return;
+          clearTimeout(timer.handle);
+          game.timers.delete(name);
+          this.broadcast(room, 'porter:timerCleared', { name });
+        },
+      },
+      reject: (reason: string) => new GameRejection(reason),
+      endMatch: (reason: unknown) => {
+        if (active() && underWay(game)) this.end(room, { by: 'game', reason });
+      },
+    };
+  }
+
+  private run(room: RoomRec, game: Game, name: string, timer: Timer) {
+    timer.endsAt = Date.now() + timer.remaining;
+    timer.handle = setTimeout(() => {
+      game.timers.delete(name);
+      this.broadcast(room, 'porter:timerCleared', { name });
+      try {
+        this.detachPromise(timer.callback(), room, `timer=${name}`);
+      } catch (error) {
+        this.logError(`room=${room.id} game=${game.entry.definition.name} timer=${name}`, error);
+      }
+    }, timer.remaining);
+  }
+
+  private remaining(game: Game, timer: Timer) {
+    return game.match.status === 'running' ? Math.max(0, timer.endsAt - Date.now()) : timer.remaining;
+  }
+
+  private end(room: RoomRec, reason: EndReason) {
+    const { game } = room;
+    for (const timer of game.timers.values()) clearTimeout(timer.handle);
+    game.timers.clear();
+    game.match = { status: 'ended', reason };
+    this.broadcast(room, 'porter:matchEnded', { reason });
+    this.hook(room, 'onEnd', reason);
+  }
+
+  /** Calls a hook the Manager may not have. Whatever it throws is logged and goes no further. */
+  private hook(room: RoomRec, method: string, ...args: unknown[]) {
+    const { manager, definition } = room.game.entry;
+    if (typeof manager[method] !== 'function') return;
+    try {
+      this.detachPromise(manager[method](room.game.ctx, ...args), room, `method=${method}`);
+    } catch (error) {
+      this.logError(`room=${room.id} game=${definition.name} method=${method}`, error);
+    }
+  }
+
+  /** A promise from the Integrator's code never becomes an unhandled rejection. */
+  private detachPromise(result: unknown, room: RoomRec, what: string) {
+    if (!isThenable(result)) return;
+    const game = room.game.entry.definition.name;
+    result.then(undefined, (error) => this.logError(`room=${room.id} game=${game} ${what}`, error));
+  }
+
+  private logError(what: string, error: unknown) {
+    this.logger.error(what, error instanceof Error ? error.stack : String(error));
+  }
+}

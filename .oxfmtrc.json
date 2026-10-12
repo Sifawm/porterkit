@@ -1,0 +1,16 @@
+{
+  "$schema": "./node_modules/oxfmt/configuration_schema.json",
+  "printWidth": 120,
+  "singleQuote": true,
+  "ignorePatterns": [
+    "dist",
+    "out-tsc",
+    ".nx",
+    ".scratch",
+    ".codegraph",
+    "docs",
+    "CONTEXT.md",
+    "CHANGELOG.md",
+    "pnpm-lock.yaml"
+  ]
+}

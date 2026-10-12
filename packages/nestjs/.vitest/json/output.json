@@ -1,0 +1,139 @@
+{
+  "numTotalTestSuites": 3,
+  "numPassedTestSuites": 3,
+  "numFailedTestSuites": 0,
+  "numPendingTestSuites": 0,
+  "numTotalTests": 9,
+  "numPassedTests": 9,
+  "numFailedTests": 0,
+  "numPendingTests": 0,
+  "numTodoTests": 0,
+  "snapshot": {
+    "added": 0,
+    "failure": false,
+    "filesAdded": 0,
+    "filesRemoved": 0,
+    "filesRemovedList": [],
+    "filesUnmatched": 0,
+    "filesUpdated": 0,
+    "matched": 0,
+    "total": 0,
+    "unchecked": 0,
+    "uncheckedKeysByFile": [],
+    "unmatched": 0,
+    "updated": 0,
+    "didUpdate": false
+  },
+  "startTime": 1791835740814,
+  "success": true,
+  "testResults": [
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": ["on Fastify"],
+          "fullName": "on Fastify a login, a room check, and their rejections",
+          "status": "passed",
+          "title": "a login, a room check, and their rejections",
+          "duration": 149.22036500000002,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": ["on Fastify"],
+          "fullName": "on Fastify a connection over SSE, with its commands over HTTP",
+          "status": "passed",
+          "title": "a connection over SSE, with its commands over HTTP",
+          "duration": 36.653753999999935,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": ["on Fastify"],
+          "fullName": "on Fastify a connection over WebSocket, beside one over SSE that then drops",
+          "status": "passed",
+          "title": "a connection over WebSocket, beside one over SSE that then drops",
+          "duration": 4025.987063,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": ["on Fastify"],
+          "fullName": "on Fastify a refused connection gets porter:rejected and is closed, on both transports",
+          "status": "passed",
+          "title": "a refused connection gets porter:rejected and is closed, on both transports",
+          "duration": 12.654633000000103,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": ["on Express"],
+          "fullName": "on Express a login, a room check, and their rejections",
+          "status": "passed",
+          "title": "a login, a room check, and their rejections",
+          "duration": 35.87390400000004,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": ["on Express"],
+          "fullName": "on Express a connection over SSE, with its commands over HTTP",
+          "status": "passed",
+          "title": "a connection over SSE, with its commands over HTTP",
+          "duration": 14.47995600000013,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": ["on Express"],
+          "fullName": "on Express a connection over WebSocket, beside one over SSE that then drops",
+          "status": "passed",
+          "title": "a connection over WebSocket, beside one over SSE that then drops",
+          "duration": 4014.754664000001,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": ["on Express"],
+          "fullName": "on Express a refused connection gets porter:rejected and is closed, on both transports",
+          "status": "passed",
+          "title": "a refused connection gets porter:rejected and is closed, on both transports",
+          "duration": 8.29326200000105,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": [],
+          "fullName": "an initialGame that names no Game stops the application from starting",
+          "status": "passed",
+          "title": "an initialGame that names no Game stops the application from starting",
+          "duration": 7.787394000000859,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        }
+      ],
+      "startTime": 1791835741345,
+      "endTime": 1791835749650.7874,
+      "status": "passed",
+      "message": "",
+      "name": "/home/sifaw/Workspaces/porter/packages/nestjs/src/integration.test.ts"
+    }
+  ]
+}

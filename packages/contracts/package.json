@@ -1,0 +1,29 @@
+{
+  "name": "@porterkit/contracts",
+  "version": "0.0.0",
+  "description": "The types Porter's server and client share.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Sifawm/porter",
+    "directory": "packages/contracts"
+  },
+  "files": [
+    "dist",
+    "!**/*.tsbuildinfo"
+  ],
+  "type": "module",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "test": "vitest run --typecheck.only"
+  }
+}
