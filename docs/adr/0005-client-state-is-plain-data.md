@@ -1,0 +1,7 @@
+# Client state is immutable plain data, not the shared model classes
+
+`@porterkit/react` keeps a Game's settings, state and per-User data as the plain JSON that travels on the wire, typed from the games map, and never mutates it: an applier is a reducer that returns the next data. The alternative, which gruppkul uses today and which the first prototype tried, was to hold instances of the model classes shared with the server and mutate them in place.
+
+We chose plain data because mutation in place breaks React's identity checks. A component wrapped in `memo`, or any component compiled by React Compiler, keeps showing the old value because the model it receives is the same object as before; nothing warns. Gruppkul avoids this with MobX, which Porter does not want to impose on Integrators. With immutable data an object's identity changes exactly when its value does, so the store is a plain `useSyncExternalStore` with no dependency beyond React, and a `porter:joined` after a reconnection is the state as received, with no step that turns JSON back into class instances.
+
+The cost is that the client no longer runs the same model methods as the server: appliers spell out each change with spreads, and are more verbose than a method call. The model classes stay on the server and in the shared definition, whose factories the client still calls for initial values and converts to plain data; so whatever those factories produce must survive a JSON round trip. An Integrator who prefers mutation syntax can wrap its appliers with immer; Porter does not depend on it.

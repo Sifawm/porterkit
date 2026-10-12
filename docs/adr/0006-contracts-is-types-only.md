@@ -1,0 +1,7 @@
+# `@porterkit/contracts` holds only types, and a Game's data is its JSON
+
+`@porterkit/contracts` emits no runtime code: it holds the games map, the messages and the Game definition as types, with event names and reasons as unions of string literals. There are no base classes for an Integrator to extend. Whatever a Game definition produces for settings, state and per-User data is read by Porter with `JSON.stringify`, with no read method of Porter's own. The alternative, which gruppkul uses today and which an earlier decision kept, was a set of shared base classes (`BaseRoom`, `BaseGame`, `BaseState`, `BaseUser`) plus a read method on every model.
+
+We chose types only because the base classes were left with nothing to share. The room, its Users and the Match lifecycle became Porter's own, internal to `@porterkit/nestjs`, and [ADR 0005](0005-client-state-is-plain-data.md) removed the client as a consumer of classes. A package with no runtime code also cannot be loaded twice, so the single-copy concern behind publishing it as ESM only no longer exists, and the server imports it with `import type`.
+
+The cost is that every enumerable field of a Game's settings, state and per-User data travels to every User unless it is kept in the Match memory; the types in the games map catch a missing or mistyped field, not an extra one. A shared runtime value needed later, such as a validator, reopens the package's format.
