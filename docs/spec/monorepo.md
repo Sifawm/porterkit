@@ -53,7 +53,7 @@ One Nx 23 workspace over pnpm workspaces and TypeScript project references. Ther
 - `@porterkit/client` is a peer dependency of `@porterkit/react` and of `@porterkit/godot`, not a dependency: the Integrator installs it to create the instance, and a Binding imports only its types.
 - `@porterkit/client` has a second entry point, `@porterkit/client/testing`, with a fake `WebSocket` and a storage in memory for the tests of a Binding or of an Integrator. It imports no test runner, so Vitest is not a dependency of the package.
 - `@porterkit/react` has one entry point, the package root.
-- All five declare `"license": "MIT"` and `"repository"` as `https://github.com/Sifawm/porter`, each with the `directory` of its package.
+- All five declare `"license": "MIT"` and `"repository"` as `https://github.com/Sifawm/porterkit`, each with the `directory` of its package.
 
 ## TypeScript
 
@@ -102,9 +102,9 @@ Vitest everywhere. There is no Jest, no Playwright and no coverage threshold.
 
 ## Publishing
 
-- The registry is public npm, under the scope `@porterkit`. The repository is `Sifawm/porter` on GitHub, public, and the licence is MIT.
+- The registry is public npm, under the scope `@porterkit`. The repository is `Sifawm/porterkit` on GitHub, public, and the licence is MIT.
 - `nx release` versions and publishes `packages/*` only, as one fixed group. The version comes from conventional commits. It writes one `CHANGELOG.md` at the root and tags `vX.Y.Z`. There is no semantic-release.
-- Releases are published from GitHub Actions with npm trusted publishing (OIDC) and signed provenance. No npm token is stored. Each of the five packages trusts the repository `Sifawm/porter` and the workflow `release.yml`.
+- Releases are published from GitHub Actions with npm trusted publishing (OIDC) and signed provenance. No npm token is stored. Each of the five packages trusts the repository `Sifawm/porterkit` and the workflow `release.yml`.
 
 Two workflows, both started by hand:
 

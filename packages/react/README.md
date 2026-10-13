@@ -15,4 +15,4 @@ export const porter = createPorter<Games, Profile>({
 export const { useConnection, useRoom, useGame, useTimer, useEvent } = createHooks(porter);
 ```
 
-See the [specification](https://github.com/Sifawm/porter/blob/main/docs/spec/react.md).
+See the [specification](https://github.com/Sifawm/porterkit/blob/main/docs/spec/react.md).

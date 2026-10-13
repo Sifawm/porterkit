@@ -11,4 +11,4 @@ export class AppModule {}
 
 The application also installs `@nestjs/platform-ws` and `ws`, and calls `app.useWebSocketAdapter(new WsAdapter(app))`.
 
-See the [specification](https://github.com/Sifawm/porter/blob/main/docs/spec/nestjs.md).
+See the [specification](https://github.com/Sifawm/porterkit/blob/main/docs/spec/nestjs.md).

@@ -8,4 +8,4 @@ It emits no runtime code and has no dependencies, so it is safe to import from a
 import type { GameDefinition } from '@porterkit/contracts';
 ```
 
-See the [specification](https://github.com/Sifawm/porter/blob/main/docs/spec/contracts.md).
+See the [specification](https://github.com/Sifawm/porterkit/blob/main/docs/spec/contracts.md).
