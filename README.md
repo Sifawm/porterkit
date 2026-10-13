@@ -8,6 +8,7 @@ A library for real-time rooms. Porter logs Users into rooms, keeps their connect
 | [`@porterkit/nestjs`](packages/nestjs)       | The server: one NestJS module.                      |
 | [`@porterkit/client`](packages/client)       | The client: login, connection and state.            |
 | [`@porterkit/react`](packages/react)         | The Binding for React: the client's state as hooks. |
+| [`@porterkit/godot`](packages/godot)         | The Binding for Godot: signals in a web export.     |
 
 The specification is in [docs/spec](docs/spec/README.md), the decisions behind it in [docs/adr](docs/adr) and the vocabulary in [CONTEXT.md](CONTEXT.md).
 
@@ -21,7 +22,7 @@ pnpm dev     # the example server on :3000 and the example front
 pnpm check   # format, lint, dependencies, typecheck, build and every test
 ```
 
-The example in [examples](examples) is a shared counter built on the four packages as an Integrator would.
+The example in [examples](examples) is a shared counter built on the five packages as an Integrator would.
 
 ## Licence
 

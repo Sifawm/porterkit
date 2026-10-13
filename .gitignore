@@ -3,3 +3,5 @@ dist
 out-tsc
 *.tsbuildinfo
 .nx
+.godot
+examples/godot/public/godot

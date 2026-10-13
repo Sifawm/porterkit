@@ -2,7 +2,7 @@
 
 Porter is a library for real-time rooms. It logs Users into rooms, keeps their connections alive, runs the lifecycle of the Matches played in them and carries each Game's messages, leaving the rules of every Game to the Integrator.
 
-This specification is what v1 is built from. It stands on its own: everything needed to build Porter is in these seven files.
+This specification is what v1 is built from. It stands on its own: everything needed to build Porter is in these eight files.
 
 | File | Contents |
 |---|---|
@@ -11,6 +11,7 @@ This specification is what v1 is built from. It stands on its own: everything ne
 | [nestjs.md](nestjs.md) | Public API of `@porterkit/nestjs`, and the rules of a room |
 | [client.md](client.md) | Public API of `@porterkit/client`: login, connection and state |
 | [react.md](react.md) | Public API of `@porterkit/react`: the hooks |
+| [godot.md](godot.md) | Public API of `@porterkit/godot`: the facade and the addon |
 | [monorepo.md](monorepo.md) | Layout, tools, versions and publishing |
 
 The terms written with a capital (Integrator, User, Profile, Token, Admin, Grace period, Game, Game definition, Match, Match timer, Manager, Match memory, Applier, Binding) are defined in the [glossary](../../CONTEXT.md) and are not redefined here.
@@ -21,11 +22,11 @@ An Integrator that has several Games running on room code of its own can rebuild
 
 ## Scope of v1
 
-- **Four packages.** `@porterkit/contracts`, types only and safe for a browser; `@porterkit/nestjs`, the server; `@porterkit/client`, the client; `@porterkit/react`, its Binding for React.
+- **Five packages.** `@porterkit/contracts`, types only and safe for a browser; `@porterkit/nestjs`, the server; `@porterkit/client`, the client; `@porterkit/react` and `@porterkit/godot`, its Bindings for React and for Godot.
 - **Porter knows Games.** A room always has an active Game, and Porter knows its shape as a contract: settings, state, per-User data and messages. It never knows its rules ([ADR 0002](../adr/0002-porter-knows-games.md)).
 - **Two transports.** WebSocket and SSE, over one connection lifecycle ([ADR 0001](../adr/0001-two-transports.md)).
 - **Guest identity.** A User is a name, unique in its room, and a Profile. Its Token is tied to that room ([ADR 0004](../adr/0004-opaque-room-token.md)).
-- **A complete client.** Login, connection and state, with no framework, and React hooks over them.
+- **A complete client.** Login, connection and state, with no framework; React hooks over them, and signals for a Game made in Godot and exported for the web.
 - **Rooms in memory**, in one process.
 
 ## Who does what
@@ -56,7 +57,8 @@ An Integrator that has several Games running on room code of its own can rebuild
 - A room service or a User model supplied by the Integrator.
 - Persistence, and running on more than one instance.
 - A framework-neutral server core, and integrations for Express or Fastify without NestJS.
-- Bindings for anything other than React.
+- Bindings for anything other than React and Godot.
+- A Game in a document other than the client's (an iframe), and Godot outside a web export.
 - NestJS guards, pipes, interceptors and filters on a Manager's handlers and hooks.
 - NestJS 12.
 

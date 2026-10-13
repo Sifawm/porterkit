@@ -1,0 +1,39 @@
+{
+  "name": "@porterkit/godot",
+  "version": "0.0.0",
+  "description": "Porter's Binding for Godot: the client as signals in a web export.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Sifawm/porter",
+    "directory": "packages/godot"
+  },
+  "files": [
+    "dist",
+    "addons",
+    "!**/*.tsbuildinfo"
+  ],
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@porterkit/client": "workspace:*",
+    "@porterkit/contracts": "workspace:*"
+  },
+  "peerDependencies": {
+    "@porterkit/client": "workspace:*"
+  }
+}

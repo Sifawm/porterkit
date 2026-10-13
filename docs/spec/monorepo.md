@@ -1,6 +1,6 @@
 # Monorepo
 
-Where the four packages live, how they are built, tested and checked, and how they are published. What each package exports is in [contracts.md](contracts.md), [nestjs.md](nestjs.md), [client.md](client.md) and [react.md](react.md).
+Where the five packages live, how they are built, tested and checked, and how they are published. What each package exports is in [contracts.md](contracts.md), [nestjs.md](nestjs.md), [client.md](client.md), [react.md](react.md) and [godot.md](godot.md).
 
 ## Layout
 
@@ -12,9 +12,11 @@ One Nx 23 workspace over pnpm workspaces and TypeScript project references. Ther
 | `packages/nestjs` | `@porterkit/nestjs` | yes |
 | `packages/client` | `@porterkit/client` | yes |
 | `packages/react` | `@porterkit/react` | yes |
+| `packages/godot` | `@porterkit/godot` | yes |
 | `examples/game` | `@porterkit/example-game` | no (`private: true`) |
 | `examples/server` | `@porterkit/example-server` | no (`private: true`) |
 | `examples/web` | `@porterkit/example-web` | no (`private: true`) |
+| `examples/godot` | `@porterkit/example-godot` | no (`private: true`) |
 | root | `@porterkit/source` | no |
 
 - `pnpm-workspace.yaml` lists `packages/*` and `examples/*`.
@@ -24,15 +26,16 @@ One Nx 23 workspace over pnpm workspaces and TypeScript project references. Ther
 
 ## Packages
 
-| | `contracts` | `nestjs` | `client` | `react` |
-|---|---|---|---|---|
-| Module format | ESM | CommonJS | ESM | ESM |
-| Dependencies | none | `@porterkit/contracts` | `@porterkit/contracts` | `@porterkit/contracts` |
-| Peer dependencies | none | see below | none | `react` `^18.0.0 \|\| ^19.0.0`, `@porterkit/client` |
-| `engines.node` | not declared | `>=22.12` | not declared | not declared |
+| | `contracts` | `nestjs` | `client` | `react` | `godot` |
+|---|---|---|---|---|---|
+| Module format | ESM | CommonJS | ESM | ESM | ESM |
+| Dependencies | none | `@porterkit/contracts` | `@porterkit/contracts` | `@porterkit/contracts` | none |
+| Peer dependencies | none | see below | none | `react` `^18.0.0 \|\| ^19.0.0`, `@porterkit/client` | `@porterkit/client` |
+| `engines.node` | not declared | `>=22.12` | not declared | not declared | not declared |
 
-- All four are compiled with `tsc --build` through project references, by the `build` target Nx infers. Nothing is bundled.
+- All five are compiled with `tsc --build` through project references, by the `build` target Nx infers. Nothing is bundled.
 - The `package.json` in each package directory is the one published, with `files` limited to the build output. Peer dependencies are written in it by hand.
+- `@porterkit/godot` is the exception: it also publishes `addons/porter`, the GDScript addon, as source. No step builds or copies it, and it carries the `.uid` file Godot writes next to a script.
 - `@porterkit/contracts` emits no runtime code and has no dependency, `tslib` included: `importHelpers` is off.
 - A package depends on another package of the workspace at the exact version of their common release, also when it is a peer dependency. In the source the dependency is `workspace:*`.
 - Peer dependencies of `@porterkit/nestjs`:
@@ -47,10 +50,10 @@ One Nx 23 workspace over pnpm workspaces and TypeScript project references. Ther
 - `@nestjs/platform-ws`, `ws`, Express and Fastify are not dependencies of any package. The Integrator installs them.
 - `@porterkit/client` uses the global `WebSocket`, `fetch` and timers and nothing of a browser besides: its tests run in Node, without jsdom.
 - `@porterkit/react` is developed and tested against React 19. React 18 is in its peer range and is not tested: the package uses `useSyncExternalStore`, `useEffect` and `useRef` and nothing newer. React 17 is out, and there is no shim.
-- `@porterkit/client` is a peer dependency of `@porterkit/react`, not a dependency: the Integrator installs it to create the instance, and the Binding imports only its types.
+- `@porterkit/client` is a peer dependency of `@porterkit/react` and of `@porterkit/godot`, not a dependency: the Integrator installs it to create the instance, and a Binding imports only its types.
 - `@porterkit/client` has a second entry point, `@porterkit/client/testing`, with a fake `WebSocket` and a storage in memory for the tests of a Binding or of an Integrator. It imports no test runner, so Vitest is not a dependency of the package.
 - `@porterkit/react` has one entry point, the package root.
-- All four declare `"license": "MIT"` and `"repository"` as `https://github.com/Sifawm/porter`, each with the `directory` of its package.
+- All five declare `"license": "MIT"` and `"repository"` as `https://github.com/Sifawm/porter`, each with the `directory` of its package.
 
 ## TypeScript
 
@@ -60,23 +63,26 @@ One Nx 23 workspace over pnpm workspaces and TypeScript project references. Ther
 
 ## Example
 
-A private example of three projects that uses the packages as an Integrator would. Its Game is a shared counter: one setting with the target value, one client message `increment`, one server event announcing the new count, and the Match ends when the count reaches the target.
+A private example of four projects that uses the packages as an Integrator would. Its Game is a shared counter: one setting with the target value, one client message `increment`, one server event announcing the new count, and the Match ends when the count reaches the target.
 
 - `examples/game`: the Game's entry in the games map, its data and its Game definition. Server and web import it.
 - `examples/server`: NestJS on Fastify with `@nestjs/platform-ws`. Its `main.ts` sets the WebSocket adapter. `PorterModule.forRoot` takes values written in code: no `@nestjs/config` and no `.env`.
 - `examples/web`: Vite and React, on `@porterkit/client` and `@porterkit/react`, with no router and no component library. Login, waiting room and Match in one tree. The login screen has a selector of transport, WebSocket or SSE.
+- `examples/godot`: the same Game drawn by Godot, with nothing of React: a page of Vite whose only code creates the instance, calls `exposeToGodot` and starts the engine, and a Godot project in `game/` with login, waiting room and Match in one script. `game/addons/porter` is a link to the addon in `packages/godot`.
 - `pnpm dev` at the root starts server and web.
+- The Godot example needs Godot 4.7 with its web export templates, which CI does not have. `pnpm --filter @porterkit/example-godot export` writes the export into `public/godot`, which is not versioned, and `pnpm --filter @porterkit/example-godot start` serves the page. Neither is part of `pnpm dev` or of `pnpm check`.
 
 ## Tests
 
 Vitest everywhere. There is no Jest, no Playwright and no coverage threshold.
 
-- **Transformer.** Oxc, the default of Vite 8, in `contracts`, `client`, `react`, `examples/game` and `examples/web`. `unplugin-swc` with `@swc/core` in `nestjs` and `examples/server`, which need decorator metadata.
+- **Transformer.** Oxc, the default of Vite 8, in `contracts`, `client`, `react`, `godot`, `examples/game` and `examples/web`. `unplugin-swc` with `@swc/core` in `nestjs` and `examples/server`, which need decorator metadata.
 - **`contracts`.** Type tests only (`expectTypeOf` under Vitest's typecheck). It has no runtime to test.
 - **`nestjs`, the bulk.** Room rules and the connection lifecycle through the internal `connect(token, sink)` function ([nestjs.md](nestjs.md#connections)), with a fake sink and fake timers. No network and no NestJS application.
 - **`nestjs`, the rest.** A few integration tests with `@nestjs/testing` (a login, a connection, one command), run on Fastify and on Express.
 - **`client`.** Through a fake `WebSocket` and a fake `fetch`, with fake timers: login, both transports, state, Appliers, and reconnection with `maxRetries`.
 - **`react`.** Hooks with `@testing-library/react` and jsdom, over the real client and the fake `WebSocket` of `@porterkit/client/testing`.
+- **`godot`.** The facade over the real client and the fake `WebSocket` of `@porterkit/client/testing`, in Node. The addon has no automatic test: the bridge it uses exists only in a web export running in a browser. It is checked by hand with `examples/godot`, and it is kept to parsing JSON and emitting signals so that there is little to check ([ADR 0008](../adr/0008-godot-crosses-in-json.md)).
 - **End to end.** One suite in `examples/server` starts the example server and drives it with `@porterkit/client` from Node, with no Binding, once over WebSocket and once over SSE.
 
 ## Checks
@@ -90,7 +96,7 @@ Vitest everywhere. There is no Jest, no Playwright and no coverage threshold.
 ## Versions
 
 - Node 24 for development. CI runs on Node 22 and 24.
-- The four packages share one version. The first release is `0.1.0`.
+- The five packages share one version. The first release is `0.1.0`.
 - While the version is `0.x`, a change to the protocol raises the minor and a compatible change raises the patch.
 - `1.0.0` is set by hand, when the goal of v1 in [README.md](README.md#goal-of-v1) is met.
 
@@ -98,7 +104,7 @@ Vitest everywhere. There is no Jest, no Playwright and no coverage threshold.
 
 - The registry is public npm, under the scope `@porterkit`. The repository is `Sifawm/porter` on GitHub, public, and the licence is MIT.
 - `nx release` versions and publishes `packages/*` only, as one fixed group. The version comes from conventional commits. It writes one `CHANGELOG.md` at the root and tags `vX.Y.Z`. There is no semantic-release.
-- Releases are published from GitHub Actions with npm trusted publishing (OIDC) and signed provenance. No npm token is stored. Each of the four packages trusts the repository `Sifawm/porter` and the workflow `release.yml`.
+- Releases are published from GitHub Actions with npm trusted publishing (OIDC) and signed provenance. No npm token is stored. Each of the five packages trusts the repository `Sifawm/porter` and the workflow `release.yml`.
 
 Two workflows, both started by hand:
 

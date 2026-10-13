@@ -1,0 +1,15 @@
+{
+  "name": "@porterkit/example-godot",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "export": "mkdir -p public/godot && godot --headless --path game --export-release Web ../public/godot/index.html",
+    "start": "vite"
+  },
+  "dependencies": {
+    "@porterkit/client": "workspace:*",
+    "@porterkit/example-game": "workspace:*",
+    "@porterkit/godot": "workspace:*"
+  }
+}

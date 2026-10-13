@@ -63,6 +63,18 @@ importers:
         specifier: workspace:*
         version: link:../../packages/contracts
 
+  examples/godot:
+    dependencies:
+      '@porterkit/client':
+        specifier: workspace:*
+        version: link:../../packages/client
+      '@porterkit/example-game':
+        specifier: workspace:*
+        version: link:../game
+      '@porterkit/godot':
+        specifier: workspace:*
+        version: link:../../packages/godot
+
   examples/server:
     dependencies:
       '@nestjs/common':
@@ -135,6 +147,15 @@ importers:
         version: link:../contracts
 
   packages/contracts: {}
+
+  packages/godot:
+    devDependencies:
+      '@porterkit/client':
+        specifier: workspace:*
+        version: link:../client
+      '@porterkit/contracts':
+        specifier: workspace:*
+        version: link:../contracts
 
   packages/nestjs:
     dependencies:
