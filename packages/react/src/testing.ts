@@ -104,6 +104,46 @@ export class FakeSocket {
   }
 }
 
+/** Lets what a `fetch` stream delivered reach the client. Timers are fake, so nothing else moves. */
+export const settle = async () => {
+  for (let i = 0; i < 5; i++) await vi.advanceTimersByTimeAsync(0);
+};
+
+/** The other end of an SSE stream, driven by the test. Its methods resolve once the client has read. */
+export class FakeStream {
+  static all: FakeStream[] = [];
+  static get last() {
+    return FakeStream.all.at(-1)!;
+  }
+  readonly response: Response;
+  private controller!: ReadableStreamDefaultController<Uint8Array>;
+  constructor(
+    readonly url: string,
+    private readonly init?: RequestInit,
+  ) {
+    FakeStream.all.push(this);
+    this.response = new Response(new ReadableStream({ start: (controller) => void (this.controller = controller) }));
+  }
+  /** Whether the client closed it. */
+  get aborted() {
+    return this.init?.signal?.aborted === true;
+  }
+  /** The server writes to the stream, as it comes: any chunk of any text. */
+  async raw(text: string) {
+    this.controller.enqueue(new TextEncoder().encode(text));
+    await settle();
+  }
+  /** The server sends a message. */
+  emit(event: string, data?: unknown) {
+    return this.raw(`data: ${JSON.stringify(data === undefined ? { event } : { event, data })}\n\n`);
+  }
+  /** The connection drops. */
+  async drop() {
+    this.controller.close();
+    await settle();
+  }
+}
+
 export function memoryStorage(): PorterStorage & { map: Map<string, string> } {
   const map = new Map<string, string>();
   return {
@@ -137,10 +177,22 @@ export const joined = (over: Partial<Joined<Games, Profile>> = {}): Joined<Games
 /** A client whose WebSocket and `fetch` are the test's. */
 export function setup(options: Partial<PorterOptions<Games>> = {}) {
   FakeSocket.all = [];
+  FakeStream.all = [];
   vi.stubGlobal('WebSocket', FakeSocket);
-  const fetch = vi.fn(async (_url: string, _init?: RequestInit) =>
-    Response.json({ token: 'room000001.secret', roomId: 'room000001' }),
-  );
+  /** The server's side of SSE: what was posted to `/porter/commands`, and how each request is answered. */
+  const sse = {
+    sent: [] as Envelope[],
+    events: (url: string, init?: RequestInit): Response | Promise<Response> => new FakeStream(url, init).response,
+    commands: (): Response | Promise<Response> => new Response(null, { status: 202 }),
+  };
+  const fetch = vi.fn(async (url: string, init?: RequestInit) => {
+    if (url.includes('/porter/events')) return sse.events(url, init);
+    if (url.endsWith('/porter/commands')) {
+      sse.sent.push(JSON.parse(init!.body as string));
+      return sse.commands();
+    }
+    return Response.json({ token: 'room000001.secret', roomId: 'room000001' });
+  });
   vi.stubGlobal('fetch', fetch);
   const storage = memoryStorage();
   const porter = createPorter<Games, Profile>({
@@ -157,5 +209,5 @@ export function setup(options: Partial<PorterOptions<Games>> = {}) {
     FakeSocket.last.emit('porter:joined', joined(over));
     return FakeSocket.last;
   };
-  return { porter, fetch, storage, connected };
+  return { porter, fetch, storage, connected, sse };
 }

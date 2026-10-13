@@ -435,31 +435,3 @@ test('porter:joined brings the timers of a Match under way, frozen when it is pa
   expect(porter.timer('round')).toMatchObject({ paused: true });
   expect(porter.timer('round')!.remaining()).toBe(700);
 });
-
-test('over SSE a message is posted once the one before it has been answered, so they arrive in the order sent', async () => {
-  vi.useRealTimers();
-  const { porter, fetch } = setup({ transport: 'sse' });
-  const posted: string[] = [];
-  const answer: (() => void)[] = [];
-  fetch.mockImplementation(async (url, init) => {
-    if (url.endsWith('/porter/login')) return Response.json({ token: 'room000001.secret', roomId: 'room000001' });
-    if (url.includes('/porter/events')) {
-      const event = `data: ${JSON.stringify({ event: 'porter:joined', data: joined() })}\n\n`;
-      return new Response(new ReadableStream({ start: (stream) => stream.enqueue(new TextEncoder().encode(event)) }));
-    }
-    posted.push(JSON.parse(init!.body as string).event);
-    await new Promise<void>((resolve) => answer.push(resolve));
-    return new Response(null, { status: 202 });
-  });
-  await porter.login({ name: 'Ana', profile: { avatar: 'fox' } });
-  await vi.waitFor(() => expect(porter.connection.status).toBe('connected'));
-
-  porter.send('porter:startMatch');
-  porter.send('increment');
-  await vi.waitFor(() => expect(posted).toEqual(['porter:startMatch']));
-
-  answer[0]();
-  await vi.waitFor(() => expect(posted).toEqual(['porter:startMatch', 'increment']));
-  answer[1]();
-  porter.leave();
-});
