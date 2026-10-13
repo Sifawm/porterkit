@@ -1,4 +1,4 @@
-import type { Envelope, GamesMap, MatchStatus, WireUser } from '@porterkit/contracts';
+import type { Envelope, GamesMap, Joined, MatchStatus, PorterEvents, WireTimers, WireUser } from '@porterkit/contracts';
 import { useEffect, useRef, useSyncExternalStore } from 'react';
 import { type Link, openSse, openWs } from './transports.js';
 import type {
@@ -35,6 +35,22 @@ interface State {
   match: MatchStatus;
   timers: Readonly<Record<string, Timer>>;
 }
+
+type Events = PorterEvents<GamesMap, unknown>;
+/** Porter's events that leave the room's state as it is. `receive` deals with all but the last itself. */
+type Stateless =
+  | 'porter:ping'
+  | 'porter:joined'
+  | 'porter:rejected'
+  | 'porter:replaced'
+  | 'porter:kicked'
+  | 'porter:messageRejected';
+/** The envelopes of Porter's events that change the room's state. */
+type RoomMessage = {
+  [E in Exclude<keyof Events, Stateless>]: [Events[E]] extends [undefined]
+    ? { event: E }
+    : { event: E; data: Events[E] };
+}[Exclude<keyof Events, Stateless>];
 
 const KEY = 'porter';
 const FINAL = { 'porter:kicked': 'kicked', 'porter:replaced': 'replaced' } as const;
@@ -175,57 +191,69 @@ export function createPorter<Games extends GamesMap, Profile = unknown>(
   };
 
   /** The state after one of Porter's messages. The same object when nothing changes. */
-  const applyPorter = (s: State, event: string, d: any): State => {
-    switch (event) {
+  const applyPorter = (s: State, message: RoomMessage): State => {
+    switch (message.event) {
       case 'porter:userJoined': {
         const data = plain(games[s.game]?.definition.createUserData() ?? {});
         return {
           ...s,
-          users: [...s.users, d.user],
-          data: { ...s.data, userData: { ...s.data.userData, [d.user.name]: data } },
+          users: [...s.users, message.data.user],
+          data: { ...s.data, userData: { ...s.data.userData, [message.data.user.name]: data } },
         };
       }
       case 'porter:userDisconnected':
       case 'porter:userReconnected': {
-        const status = event === 'porter:userDisconnected' ? 'reconnecting' : 'connected';
-        if (!s.users.some((user) => user.name === d.name && user.status !== status)) return s;
-        return { ...s, users: s.users.map((user) => (user.name === d.name ? { ...user, status } : user)) };
+        const status = message.event === 'porter:userDisconnected' ? 'reconnecting' : 'connected';
+        if (!s.users.some((user) => user.name === message.data.name && user.status !== status)) return s;
+        return { ...s, users: s.users.map((user) => (user.name === message.data.name ? { ...user, status } : user)) };
       }
       case 'porter:userLeft': {
-        const { [d.name as string]: _gone, ...userData } = s.data.userData;
-        return { ...s, users: s.users.filter((user) => user.name !== d.name), data: { ...s.data, userData } };
+        const { [message.data.name as string]: _gone, ...userData } = s.data.userData;
+        return {
+          ...s,
+          users: s.users.filter((user) => user.name !== message.data.name),
+          data: { ...s.data, userData },
+        };
       }
       case 'porter:adminChanged':
-        return s.admin === d.admin ? s : { ...s, admin: d.admin };
+        return s.admin === message.data.admin ? s : { ...s, admin: message.data.admin };
       case 'porter:roomLocked':
-        return s.locked === d.locked ? s : { ...s, locked: d.locked };
+        return s.locked === message.data.locked ? s : { ...s, locked: message.data.locked };
       case 'porter:settingsUpdated':
-        return { ...s, data: { ...s.data, settings: d } };
+        return { ...s, data: { ...s.data, settings: message.data } };
       case 'porter:gameChanged':
-        return { ...s, game: d.game, data: fresh(s, d.game, d.settings), match: { status: 'idle' }, timers: {} };
+        return {
+          ...s,
+          game: message.data.game,
+          data: fresh(s, message.data.game, message.data.settings),
+          match: { status: 'idle' },
+          timers: {},
+        };
       case 'porter:matchStarted':
         return { ...s, data: fresh(s, s.game, s.data.settings), match: { status: 'running' }, timers: {} };
       case 'porter:matchPaused':
-        return { ...s, match: { status: 'paused', reason: d.reason }, timers: retime(s.timers, frozen) };
+        return { ...s, match: { status: 'paused', reason: message.data.reason }, timers: retime(s.timers, frozen) };
       case 'porter:matchContinued':
         return { ...s, match: { status: 'running' }, timers: retime(s.timers, running) };
       case 'porter:matchEnded':
-        return { ...s, match: { status: 'ended', reason: d.reason }, timers: {} };
+        return { ...s, match: { status: 'ended', reason: message.data.reason }, timers: {} };
       case 'porter:timerSet': {
-        const timer = s.match.status === 'paused' ? frozen(d.remaining) : running(d.remaining);
-        return { ...s, timers: { ...s.timers, [d.name]: timer } };
+        const timer = s.match.status === 'paused' ? frozen(message.data.remaining) : running(message.data.remaining);
+        return { ...s, timers: { ...s.timers, [message.data.name]: timer } };
       }
       case 'porter:timerCleared': {
-        const { [d.name as string]: _gone, ...timers } = s.timers;
+        const { [message.data.name as string]: _gone, ...timers } = s.timers;
         return { ...s, timers };
       }
       default:
+        // An event this client does not know, or a `Stateless` one, changes nothing.
+        message satisfies never;
         return s;
     }
   };
 
-  const joined = (d: any): State => {
-    const { timers = {}, ...match } = d.game.match;
+  const joined = (d: Joined<GamesMap, unknown>): State => {
+    const { timers = {}, ...match } = d.game.match as typeof d.game.match & { timers?: WireTimers };
     const make = match.status === 'paused' ? frozen : running;
     return {
       roomId: d.roomId,
@@ -236,7 +264,7 @@ export function createPorter<Games extends GamesMap, Profile = unknown>(
       game: d.game.name,
       data: { settings: d.game.settings, state: d.game.state, userData: d.game.userData },
       match,
-      timers: Object.fromEntries(Object.entries(timers as Record<string, number>).map(([n, ms]) => [n, make(ms)])),
+      timers: Object.fromEntries(Object.entries(timers).map(([n, ms]) => [n, make(ms)])),
     };
   };
 
@@ -288,16 +316,20 @@ export function createPorter<Games extends GamesMap, Profile = unknown>(
 
     if (event === 'porter:joined') {
       failures = waits = 0;
-      pingInterval = (data as { pingInterval: number }).pingInterval;
+      const room = data as Joined<GamesMap, unknown>;
+      pingInterval = room.pingInterval;
       hear();
-      state = joined(data);
+      state = joined(room);
       setConnection({ status: 'connected' });
     } else if (event === 'porter:rejected') {
       close((data as { reason: CloseReason }).reason);
     } else if (event in FINAL) {
       close(FINAL[event as keyof typeof FINAL]);
     } else if (state) {
-      const next = event.startsWith('porter:') ? applyPorter(state, event, data) : applyGame(state, event, data);
+      // The client takes the server's word for the shape of Porter's own events.
+      const next = event.startsWith('porter:')
+        ? applyPorter(state, { event, data } as RoomMessage)
+        : applyGame(state, event, data);
       if (next !== state) {
         state = next;
         notify();
