@@ -239,7 +239,7 @@ The states, the transitions and what each sends are in [protocol.md](protocol.md
 - `gracePeriod` is the length of the Grace period. Every User without an open connection has one running. When it runs out the User leaves the room.
 - A `pending` User whose Grace period runs out is removed without any message: nobody ever saw it.
 - A second connection of a `connected` User replaces the first. The User never stops being `connected`; neither the other Users nor the Game are told.
-- Pings and Grace periods use native timers, kept by one internal service that clears them when the room or the module is destroyed.
+- Pings and Grace periods use native timers, kept with each User's Presence and cleared when the User leaves the room and when the room or the module is destroyed.
 
 **Transport adapters.** The gateway and the SSE controller contain no room logic. Each is an adapter over one internal function:
 

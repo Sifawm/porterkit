@@ -32,6 +32,10 @@ _Avoid_: Queue, history, hierarchy
 The time a User may stay in a room without an open connection, either before connecting for the first time or after a connection drops. When it runs out the User leaves the room.
 _Avoid_: Timeout, keep-alive, reconnect window
 
+**Presence**:
+Whether a User has an open connection: it has not connected yet, it is connected, or its connection dropped and it may come back. The Grace period runs exactly while it has none.
+_Avoid_: Connection state, session, liveness
+
 **Game**:
 What runs inside a room, supplied by the Integrator. Porter knows a Game's shape (its settings, its state, the messages it handles) but never its rules.
 _Avoid_: Activity, app, plugin

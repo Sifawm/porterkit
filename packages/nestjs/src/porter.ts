@@ -17,6 +17,7 @@ import type {
 import { AdminLine } from './admin-line';
 import { definitionOf, type Handler, handlersIn } from './decorators';
 import { Match } from './match';
+import { Presence } from './presence';
 import {
   type AnyDefinition,
   type Args,
@@ -50,12 +51,10 @@ interface UserRec {
   name: string;
   profile: unknown;
   secret: Buffer;
-  status: 'pending' | 'connected' | 'reconnecting';
-  sink?: Sink;
+  presence: Presence;
+  /** That of its Presence. */
+  readonly status: Presence['status'];
   data: object;
-  ponged: boolean;
-  ping?: NodeJS.Timeout;
-  grace?: NodeJS.Timeout;
   /** The User a Manager sees. */
   view: User<any, any>;
 }
@@ -191,7 +190,17 @@ export class Porter {
     }
 
     const secret = randomBytes(32);
-    const user: UserRec = { name, profile, secret, status: 'pending', data: {}, ponged: true, view: undefined! };
+    const user: UserRec = {
+      name,
+      profile,
+      secret,
+      presence: undefined!,
+      get status() {
+        return user.presence.status;
+      },
+      data: {},
+      view: undefined!,
+    };
     user.view = {
       get name() {
         return user.name;
@@ -202,7 +211,7 @@ export class Porter {
       get data() {
         return user.data;
       },
-      send: (event: string, data?: unknown) => user.sink?.send(envelope(event, data)),
+      send: (event: string, data?: unknown) => user.presence.send(envelope(event, data)),
     };
 
     if (!room) {
@@ -220,8 +229,12 @@ export class Porter {
         return refuse(500, 'failed');
       }
     }
-    room.users.push(user);
-    this.startGrace(room, user);
+    const home = room;
+    home.users.push(user);
+    user.presence = new Presence(this.options, {
+      dropped: () => this.dropped(home, user),
+      graceOver: () => this.leave(home, user, 'timeout'),
+    });
     return { status: 200, body: { token: `${room.id}.${secret.toString('base64url')}`, roomId: room.id } };
   }
 
@@ -248,29 +261,8 @@ export class Porter {
       return NO_CONNECTION;
     }
     const { room, user } = found;
-    const before = user.status;
-
-    if (before === 'connected') {
-      const old = user.sink!;
-      this.detach(user);
-      old.send(own('porter:replaced'));
-      old.close();
-    } else {
-      clearTimeout(user.grace);
-      if (before === 'pending') user.data = room.game.entry.definition.createUserData();
-    }
-    user.status = 'connected';
-    user.sink = sink;
-    user.ponged = true;
-    user.ping = setInterval(() => {
-      if (!user.ponged) {
-        // Dropped first: a transport may report the close before `close` returns.
-        this.drop(room, user);
-        return sink.close();
-      }
-      user.ponged = false;
-      this.send(user, 'porter:ping');
-    }, this.options.pingInterval);
+    const before = user.presence.attach(sink);
+    if (before === 'pending') user.data = room.game.entry.definition.createUserData();
 
     // The Admin is settled first so `porter:joined` carries it, and announced after.
     const adminChanged = before !== 'connected' && room.line.connected(user);
@@ -288,10 +280,10 @@ export class Porter {
 
     return {
       receive: (raw) => {
-        if (user.sink === sink) this.receive(room, user, raw);
+        if (user.presence.has(sink)) this.receive(room, user, raw);
       },
       closed: () => {
-        if (user.sink === sink) this.drop(room, user);
+        if (user.presence.closed(sink)) this.dropped(room, user);
       },
     };
   }
@@ -299,12 +291,7 @@ export class Porter {
   /** Closes every connection and clears every timer. */
   destroy(): void {
     for (const room of this.rooms.values()) {
-      for (const user of room.users) {
-        const sink = user.sink;
-        this.detach(user);
-        clearTimeout(user.grace);
-        sink?.close();
-      }
+      for (const user of room.users) user.presence.end();
       this.destroyRoom(room);
     }
   }
@@ -339,20 +326,8 @@ export class Porter {
     };
   }
 
-  private detach(user: UserRec) {
-    clearInterval(user.ping);
-    user.sink = undefined;
-  }
-
-  private startGrace(room: RoomRec, user: UserRec) {
-    user.grace = setTimeout(() => this.leave(room, user, 'timeout'), this.options.gracePeriod);
-  }
-
   /** The User's connection is gone: it is `reconnecting` and its Grace period runs. */
-  private drop(room: RoomRec, user: UserRec) {
-    this.detach(user);
-    user.status = 'reconnecting';
-    this.startGrace(room, user);
+  private dropped(room: RoomRec, user: UserRec) {
     this.broadcast(room, 'porter:userDisconnected', { name: user.name });
     if (room.line.dropped(user, room.users)) this.announceAdmin(room);
     if (room.game.match.underWay) this.hook(room, 'onUserDisconnected', user.view);
@@ -361,8 +336,7 @@ export class Porter {
   /** The User is out of the room, whatever state it was in. */
   private leave(room: RoomRec, user: UserRec, reason: 'timeout' | 'kicked') {
     const wasVisible = isVisible(user);
-    this.detach(user);
-    clearTimeout(user.grace);
+    user.presence.end();
     room.users.splice(room.users.indexOf(user), 1);
     if (wasVisible) this.broadcast(room, 'porter:userLeft', { name: user.name, reason });
     if (room.line.left(user, room.users)) this.announceAdmin(room);
@@ -387,7 +361,7 @@ export class Porter {
   }
 
   private send<E extends keyof Events>(user: UserRec, event: E, ...data: Args<Events[E]>) {
-    user.sink?.send(own(event, ...data));
+    user.presence.send(own(event, ...data));
   }
 
   private broadcast<E extends keyof Events>(room: RoomRec, event: E, ...data: Args<Events[E]>) {
@@ -430,7 +404,7 @@ export class Porter {
       }
     };
 
-    if (event === 'porter:pong') return void (user.ponged = true);
+    if (event === 'porter:pong') return user.presence.pong();
 
     if (!event.startsWith('porter:')) {
       const handler = game.entry.handlers.get(event);
@@ -461,10 +435,7 @@ export class Porter {
         if (data.name === user.name) return reject('notAllowedNow');
         const target = room.users.find((u) => isVisible(u) && u.name === data.name);
         if (!target) return reject('notFound');
-        const sink = target.sink;
-        sink?.send(own('porter:kicked'));
-        this.detach(target);
-        sink?.close();
+        target.presence.end(own('porter:kicked'));
         return this.leave(room, target, 'kicked');
       }
       case 'porter:changeGame': {
@@ -568,7 +539,7 @@ export class Porter {
         },
         user: (name: string) => room.users.find((u) => isVisible(u) && u.name === name)?.view,
         broadcast: (event: string, data?: unknown) => {
-          if (active()) for (const user of room.users) user.sink?.send(envelope(event, data));
+          if (active()) for (const user of room.users) user.presence.send(envelope(event, data));
         },
       },
       game: {
