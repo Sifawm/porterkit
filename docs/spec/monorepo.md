@@ -27,14 +27,14 @@ One Nx 23 workspace over pnpm workspaces and TypeScript project references. Ther
 | | `contracts` | `nestjs` | `client` | `react` |
 |---|---|---|---|---|
 | Module format | ESM | CommonJS | ESM | ESM |
-| Dependencies | none | `@porterkit/contracts` | `@porterkit/contracts` | `@porterkit/contracts`, `@porterkit/client` |
-| Peer dependencies | none | see below | none | `react` `^18.0.0 \|\| ^19.0.0` |
+| Dependencies | none | `@porterkit/contracts` | `@porterkit/contracts` | `@porterkit/contracts` |
+| Peer dependencies | none | see below | none | `react` `^18.0.0 \|\| ^19.0.0`, `@porterkit/client` |
 | `engines.node` | not declared | `>=22.12` | not declared | not declared |
 
 - All four are compiled with `tsc --build` through project references, by the `build` target Nx infers. Nothing is bundled.
 - The `package.json` in each package directory is the one published, with `files` limited to the build output. Peer dependencies are written in it by hand.
 - `@porterkit/contracts` emits no runtime code and has no dependency, `tslib` included: `importHelpers` is off.
-- A package depends on another package of the workspace at the exact version of their common release. In the source the dependency is `workspace:*`.
+- A package depends on another package of the workspace at the exact version of their common release, also when it is a peer dependency. In the source the dependency is `workspace:*`.
 - Peer dependencies of `@porterkit/nestjs`:
 
   | Package | Range |
@@ -47,7 +47,8 @@ One Nx 23 workspace over pnpm workspaces and TypeScript project references. Ther
 - `@nestjs/platform-ws`, `ws`, Express and Fastify are not dependencies of any package. The Integrator installs them.
 - `@porterkit/client` uses the global `WebSocket`, `fetch` and timers and nothing of a browser besides: its tests run in Node, without jsdom.
 - `@porterkit/react` is developed and tested against React 19. React 18 is in its peer range and is not tested: the package uses `useSyncExternalStore`, `useEffect` and `useRef` and nothing newer. React 17 is out, and there is no shim.
-- `@porterkit/react` has one entry point, the package root. There is no entry without React: importing the package loads `react`, and nothing calls it until a component uses a hook.
+- `@porterkit/client` is a peer dependency of `@porterkit/react`, not a dependency: the Integrator installs it to create the instance, and the Binding imports only its types.
+- `@porterkit/react` has one entry point, the package root.
 - All four declare `"license": "MIT"` and `"repository"` as `https://github.com/Sifawm/porter`, each with the `directory` of its package.
 
 ## TypeScript
@@ -62,7 +63,7 @@ A private example of three projects that uses the packages as an Integrator woul
 
 - `examples/game`: the Game's entry in the games map, its data and its Game definition. Server and web import it.
 - `examples/server`: NestJS on Fastify with `@nestjs/platform-ws`. Its `main.ts` sets the WebSocket adapter. `PorterModule.forRoot` takes values written in code: no `@nestjs/config` and no `.env`.
-- `examples/web`: Vite and React, with no router and no component library. Login, waiting room and Match in one tree. The login screen has a selector of transport, WebSocket or SSE.
+- `examples/web`: Vite and React, on `@porterkit/client` and `@porterkit/react`, with no router and no component library. Login, waiting room and Match in one tree. The login screen has a selector of transport, WebSocket or SSE.
 - `pnpm dev` at the root starts server and web.
 
 ## Tests
@@ -75,7 +76,7 @@ Vitest everywhere. There is no Jest, no Playwright and no coverage threshold.
 - **`nestjs`, the rest.** A few integration tests with `@nestjs/testing` (a login, a connection, one command), run on Fastify and on Express.
 - **`client`.** Through a fake `WebSocket` and a fake `fetch`, with fake timers: login, both transports, state, Appliers, and reconnection with `maxRetries`.
 - **`react`.** Hooks with `@testing-library/react` and jsdom, over the real client and the same fake `WebSocket`.
-- **End to end.** One suite in `examples/server` starts the example server and drives it with the real client from Node, with nothing mounted, once over WebSocket and once over SSE.
+- **End to end.** One suite in `examples/server` starts the example server and drives it with `@porterkit/client` from Node, with no Binding, once over WebSocket and once over SSE.
 
 ## Checks
 

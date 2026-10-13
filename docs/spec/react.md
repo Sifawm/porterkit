@@ -4,15 +4,16 @@
 
 The Binding for React: it exposes the client of [client.md](client.md) to React through hooks. Everything the client does (login, connection, state, Appliers) is in that file; this one says what the hooks add.
 
-- Dependencies: `@porterkit/client` and `@porterkit/contracts`.
-- Peer dependency: `react` `^18.0.0 || ^19.0.0`, and nothing else.
-- One entry point, the package root. Importing it loads `react`; nothing calls React until a component uses a hook, so the instance works in Node with nothing mounted.
+- Dependency: `@porterkit/contracts`.
+- Peer dependencies: `react` `^18.0.0 || ^19.0.0` and `@porterkit/client`, and nothing else.
+- It does not create the client's instance: it is given one ([ADR 0007](../adr/0007-a-binding-is-given-the-instance.md)). It imports only types from `@porterkit/client` and runs none of its code.
+- One entry point, the package root.
 - It uses no state library, no dependency injection and no router.
-- It exports no component and no route guard: `createPorter`, and everything `@porterkit/client` exports.
+- It exports no component and no route guard: `createHooks` and the type of what it returns.
 
 ## Public API
 
-Everything exported is below, besides what `@porterkit/client` exports, which this package exports again unchanged.
+Everything exported is below. The types of `@porterkit/client` are imported from that package, not from this one.
 
 ```ts
 import type { GameName, GamesMap } from '@porterkit/contracts';
@@ -21,8 +22,7 @@ import type {
   Connection,
   GameView,
   Incoming,
-  Porter as Client,
-  PorterOptions,
+  Porter,
   RoomView,
   Timer,
 } from '@porterkit/client';
@@ -39,23 +39,20 @@ export interface Hooks<Games extends GamesMap, Profile> {
   ): void;
 }
 
-/** The client's instance, with its hooks. */
-export interface Porter<Games extends GamesMap, Profile> extends Client<Games, Profile> {
-  readonly hooks: Hooks<Games, Profile>;
-}
-
-export declare function createPorter<Games extends GamesMap, Profile = unknown>(
-  options: PorterOptions<Games>,
-): Porter<Games, Profile>;
+export declare function createHooks<Games extends GamesMap, Profile>(
+  porter: Porter<Games, Profile>,
+): Hooks<Games, Profile>;
 ```
 
 ## Behaviour
 
 ### Hooks
 
-- `createPorter` creates the client's instance and adds `hooks` to it. It has no other effect.
+- `createHooks(porter)` returns the hooks of that instance, typed from it: the type parameters are written only at `createPorter`. It has no effect, and it changes nothing in the instance.
+- The Integrator calls it once, next to `createPorter`. Calling it again gives hooks that read the same instance.
 - There is no Provider. The hooks read the instance they were made for, from any component.
-- `hooks` is a thin layer: each hook reads the same values as the member of the instance it is named after, and re-renders when they change.
+- The hooks are a thin layer: each one reads the same values as the member of the instance it is named after, and re-renders when they change.
+- The instance stays the Integrator's: it logs in, sends and leaves through it, and may hand it to another Binding at the same time.
 - Every hook that reads state re-renders after every message that changed something. The state keeps the identity of what did not change ([client.md](client.md#state)), so `memo` on any piece of it is safe.
 
 ### Reading
@@ -87,7 +84,8 @@ The Integrator's instance, written once, with the Game of [client.md](client.md#
 
 ```ts
 // porter.ts
-import { createPorter } from '@porterkit/react';
+import { createPorter } from '@porterkit/client';
+import { createHooks } from '@porterkit/react';
 import type { Games } from './misfit.game';
 import { misfitClient } from './misfit.client';
 
@@ -101,7 +99,7 @@ export const porter = createPorter<Games, Profile>({
   games: { misfit: misfitClient },
 });
 
-export const { useConnection, useRoom, useGame, useTimer, useEvent } = porter.hooks;
+export const { useConnection, useRoom, useGame, useTimer, useEvent } = createHooks(porter);
 
 /** The Integrator's own alias, as it writes `Ctx` on the server. */
 export const useMisfit = () => useGame('misfit');

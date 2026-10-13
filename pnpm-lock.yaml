@@ -96,15 +96,15 @@ importers:
         specifier: ^8.18.0
         version: 8.22.0
     devDependencies:
-      '@porterkit/react':
+      '@porterkit/client':
         specifier: workspace:*
-        version: link:../../packages/react
-      react:
-        specifier: ^19.0.0
-        version: 19.3.0
+        version: link:../../packages/client
 
   examples/web:
     dependencies:
+      '@porterkit/client':
+        specifier: workspace:*
+        version: link:../../packages/client
       '@porterkit/example-game':
         specifier: workspace:*
         version: link:../game
@@ -178,13 +178,13 @@ importers:
 
   packages/react:
     dependencies:
-      '@porterkit/client':
-        specifier: workspace:*
-        version: link:../client
       '@porterkit/contracts':
         specifier: workspace:*
         version: link:../contracts
     devDependencies:
+      '@porterkit/client':
+        specifier: workspace:*
+        version: link:../client
       '@testing-library/react':
         specifier: ^16.3.0
         version: 16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)

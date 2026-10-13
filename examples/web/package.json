@@ -8,6 +8,7 @@
     "build": "vite build"
   },
   "dependencies": {
+    "@porterkit/client": "workspace:*",
     "@porterkit/example-game": "workspace:*",
     "@porterkit/react": "workspace:*",
     "react": "^19.0.0",

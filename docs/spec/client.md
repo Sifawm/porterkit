@@ -218,7 +218,7 @@ export declare function createPorter<Games extends GamesMap, Profile = unknown>(
 - The Integrator calls `createPorter` once, in a module of its own, with its games map and its Profile type. Everything it returns is typed from them; the type parameters are written nowhere else.
 - The instance is a module-level value. Nothing has to wrap the code that uses it.
 - Creating the instance opens no connection, reads no storage and has no other effect.
-- One instance is one room at a time.
+- One instance is one room at a time, and one connection: a User has a single connection, and a second one replaces the first ([protocol.md](protocol.md#connection-lifecycle)). An application with several Bindings creates one instance and gives it to each of them ([ADR 0007](../adr/0007-a-binding-is-given-the-instance.md)).
 - `wsUrl` is required unless `transport` is `'sse'`. It is not derived from `httpUrl`: the HTTP routes follow the Integrator's global prefix and the WebSocket path does not ([protocol.md](protocol.md#http-routes)).
 
 ### Login and Token

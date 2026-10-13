@@ -4,7 +4,7 @@ import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter } from '@nestjs/platform-fastify';
 import { WsAdapter } from '@nestjs/platform-ws';
 import { counter, type Games, type Profile } from '@porterkit/example-game';
-import { createPorter, defineGame, type Porter, type Transport } from '@porterkit/react';
+import { createPorter, defineGame, type Porter, type Transport } from '@porterkit/client';
 import { afterEach, beforeEach, expect, test } from 'vitest';
 import { AppModule } from './app.module';
 

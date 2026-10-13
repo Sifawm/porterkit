@@ -1,5 +1,6 @@
 import { counter, type Games, type Profile } from '@porterkit/example-game';
-import { createPorter, defineGame, type Transport } from '@porterkit/react';
+import { createPorter, defineGame, type Transport } from '@porterkit/client';
+import { createHooks } from '@porterkit/react';
 
 /** What the login screen's selector chose. Read before every connection attempt. */
 export const transport: { current: Transport } = { current: 'ws' };
@@ -19,4 +20,4 @@ export const porter = createPorter<Games, Profile>({
   },
 });
 
-export const { useConnection, useRoom, useGame, useEvent } = porter.hooks;
+export const { useConnection, useRoom, useGame, useEvent } = createHooks(porter);

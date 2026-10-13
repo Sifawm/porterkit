@@ -9,5 +9,5 @@
     "types": ["node"]
   },
   "include": ["src/**/*.test.ts", "vitest.config.mts"],
-  "references": [{ "path": "./tsconfig.lib.json" }, { "path": "../../packages/react/tsconfig.lib.json" }]
+  "references": [{ "path": "./tsconfig.lib.json" }, { "path": "../../packages/client/tsconfig.lib.json" }]
 }

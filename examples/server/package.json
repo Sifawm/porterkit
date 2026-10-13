@@ -20,7 +20,6 @@
     "ws": "^8.18.0"
   },
   "devDependencies": {
-    "@porterkit/react": "workspace:*",
-    "react": "^19.0.0"
+    "@porterkit/client": "workspace:*"
   }
 }

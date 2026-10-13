@@ -29,10 +29,10 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@porterkit/client": "workspace:*",
     "@porterkit/contracts": "workspace:*"
   },
   "devDependencies": {
+    "@porterkit/client": "workspace:*",
     "@testing-library/react": "^16.3.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
@@ -41,6 +41,7 @@
     "react-dom": "^19.0.0"
   },
   "peerDependencies": {
+    "@porterkit/client": "workspace:*",
     "react": "^18.0.0 || ^19.0.0"
   }
 }

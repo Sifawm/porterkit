@@ -1,4 +1,4 @@
-import type { Transport } from '@porterkit/react';
+import type { Transport } from '@porterkit/client';
 import { type FormEvent, useEffect, useState } from 'react';
 import { porter, transport, useConnection, useEvent, useGame, useRoom } from './porter';
 
