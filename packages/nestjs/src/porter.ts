@@ -9,13 +9,13 @@ import type {
   Joined,
   LoginRejectReason,
   LoginResponse,
-  MatchStatus,
   PorterCommands,
   PorterEvents,
   RejectReason,
   UserStatus,
 } from '@porterkit/contracts';
 import { definitionOf, type Handler, handlersIn } from './decorators';
+import { Match } from './match';
 import {
   type AnyDefinition,
   type Args,
@@ -59,21 +59,12 @@ interface UserRec {
   view: User<any, any>;
 }
 
-interface Timer {
-  /** Milliseconds left when it last stopped, or when it was set. */
-  remaining: number;
-  endsAt: number;
-  handle?: NodeJS.Timeout;
-  callback: () => unknown;
-}
-
 interface Game {
   entry: Registered;
   settings: any;
   state: object;
   memory: unknown;
-  match: MatchStatus;
-  timers: Map<string, Timer>;
+  match: Match;
   ctx: GameContext<any, any, any>;
 }
 
@@ -131,7 +122,6 @@ const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 const isThenable = (value: unknown): value is PromiseLike<unknown> =>
   typeof (value as { then?: unknown } | null)?.then === 'function';
-const underWay = (game: Game) => game.match.status === 'running' || game.match.status === 'paused';
 const isVisible = (user: UserRec): user is UserRec & { status: UserStatus } => user.status !== 'pending';
 const NO_CONNECTION: Connection = { receive() {}, closed() {} };
 
@@ -333,9 +323,7 @@ export class Porter {
 
   private joined(room: RoomRec, user: UserRec): Joined<GamesMap, unknown> {
     const { game } = room;
-    const { match } = game;
     const users = room.users.filter(isVisible);
-    const timers = Object.fromEntries([...game.timers].map(([name, timer]) => [name, this.remaining(game, timer)]));
     return {
       roomId: room.id,
       you: user.name,
@@ -348,7 +336,7 @@ export class Porter {
         settings: game.settings,
         state: game.state,
         userData: Object.fromEntries(users.map((u) => [u.name, u.data])),
-        match: match.status === 'running' || match.status === 'paused' ? { ...match, timers } : match,
+        match: game.match.snapshot(),
       },
     };
   }
@@ -372,7 +360,7 @@ export class Porter {
       const next = room.users.find((u) => u.status === 'connected');
       if (next && this.setAdmin(room, next)) this.broadcast(room, 'porter:adminChanged', { admin: next.name });
     }
-    if (underWay(room.game)) this.hook(room, 'onUserDisconnected', user.view);
+    if (room.game.match.underWay) this.hook(room, 'onUserDisconnected', user.view);
   }
 
   /** The User is out of the room, whatever state it was in. */
@@ -390,7 +378,7 @@ export class Porter {
       this.setAdmin(room, next);
       this.broadcast(room, 'porter:adminChanged', { admin: next.name });
     }
-    if (wasVisible && underWay(room.game)) {
+    if (wasVisible && room.game.match.underWay) {
       if (room.users.filter(isVisible).length < room.game.entry.definition.minPlayers) {
         this.end(room, { by: 'minPlayers' });
       } else {
@@ -402,8 +390,7 @@ export class Porter {
   }
 
   private destroyRoom(room: RoomRec) {
-    for (const timer of room.game.timers.values()) clearTimeout(timer.handle);
-    room.game.timers.clear();
+    room.game.match.cancelTimers();
     this.rooms.delete(room.id);
   }
 
@@ -468,7 +455,7 @@ export class Porter {
       if (handler.adminOnly && room.admin !== user) return reject('notAdmin');
       try {
         if (handler.guard && !handler.guard(data)) return reject('malformed');
-        if (!handler.anyTime && !underWay(game)) return reject('notAllowedNow');
+        if (!handler.anyTime && !game.match.underWay) return reject('notAllowedNow');
         const result = manager[handler.method](game.ctx, data, user.view);
         if (isThenable(result)) result.then(undefined, thrown(`message=${event}`));
       } catch (error) {
@@ -499,13 +486,13 @@ export class Porter {
       }
       case 'porter:changeGame': {
         if (!isObject(data) || typeof data.game !== 'string') return reject('malformed');
-        if (underWay(game)) return reject('notAllowedNow');
+        if (game.match.underWay) return reject('notAllowedNow');
         const entry = this.games.get(data.game);
         if (!entry) return reject('notFound');
         const load = async () => {
           const settings = await entry.manager.defaultSettings();
           if (this.rooms.get(room.id) !== room) return;
-          if (underWay(room.game)) return reject('notAllowedNow');
+          if (room.game.match.underWay) return reject('notAllowedNow');
           room.game = this.createGame(room, entry, settings);
           this.broadcast(room, 'porter:gameChanged', { game: entry.definition.name, settings: room.game.settings });
         };
@@ -520,36 +507,29 @@ export class Porter {
         return;
       }
       case 'porter:startMatch': {
-        if (underWay(game)) return reject('notAllowedNow');
+        if (game.match.underWay) return reject('notAllowedNow');
         if (room.users.filter(isVisible).length < definition.minPlayers) return reject('belowMinPlayers');
         if (typeof manager.canStart === 'function' && !veto('canStart')) return;
         this.fresh(room, game);
-        game.match = { status: 'running' };
+        game.match.start();
         this.broadcast(room, 'porter:matchStarted');
         return this.hook(room, 'onStart');
       }
       case 'porter:pauseMatch': {
         if (!isObject(data)) return reject('malformed');
-        if (game.match.status !== 'running') return reject('notAllowedNow');
         const reason = data.reason ?? null;
-        for (const timer of game.timers.values()) {
-          clearTimeout(timer.handle);
-          timer.remaining = Math.max(0, timer.endsAt - Date.now());
-        }
-        game.match = { status: 'paused', reason };
+        if (!game.match.pause(reason)) return reject('notAllowedNow');
         this.broadcast(room, 'porter:matchPaused', { reason });
         return this.hook(room, 'onPause', reason);
       }
       case 'porter:continueMatch': {
-        if (game.match.status !== 'paused') return reject('notAllowedNow');
-        game.match = { status: 'running' };
-        for (const [name, timer] of game.timers) this.run(room, game, name, timer);
+        if (!game.match.continue()) return reject('notAllowedNow');
         this.broadcast(room, 'porter:matchContinued');
         return this.hook(room, 'onContinue');
       }
       case 'porter:endMatch': {
-        if (!underWay(game)) return reject('notAllowedNow');
-        return this.end(room, { by: 'admin' });
+        if (!this.end(room, { by: 'admin' })) return reject('notAllowedNow');
+        return;
       }
       default:
         return event satisfies never;
@@ -566,8 +546,14 @@ export class Porter {
       settings,
       state: {},
       memory: undefined,
-      match: { status: 'idle' },
-      timers: new Map(),
+      match: new Match((name, callback) => {
+        this.broadcast(room, 'porter:timerCleared', { name });
+        try {
+          this.detachPromise(callback(), room, `timer=${name}`);
+        } catch (error) {
+          this.logError(`room=${room.id} game=${entry.definition.name} timer=${name}`, error);
+        }
+      }),
       ctx: undefined!,
     };
     game.ctx = this.context(room, game);
@@ -613,53 +599,27 @@ export class Porter {
       },
       timers: {
         set: (name, ms, callback) => {
-          if (!active() || !underWay(game)) throw new Error(`Match timer "${name}" set without a Match under way`);
-          if (!Number.isFinite(ms) || ms <= 0) throw new Error(`Match timer "${name}" set to ${ms} ms`);
-          clearTimeout(game.timers.get(name)?.handle);
-          const timer: Timer = { remaining: ms, endsAt: 0, callback };
-          game.timers.set(name, timer);
-          if (game.match.status === 'running') this.run(room, game, name, timer);
+          if (!active()) throw new Error(`Match timer "${name}" set without a Match under way`);
+          game.match.setTimer(name, ms, callback);
           this.broadcast(room, 'porter:timerSet', { name, remaining: ms });
         },
         clear: (name) => {
-          const timer = game.timers.get(name);
-          if (!timer) return;
-          clearTimeout(timer.handle);
-          game.timers.delete(name);
-          this.broadcast(room, 'porter:timerCleared', { name });
+          if (game.match.clearTimer(name)) this.broadcast(room, 'porter:timerCleared', { name });
         },
       },
       reject: (reason: string) => new GameRejection(reason),
       endMatch: (reason: unknown) => {
-        if (active() && underWay(game)) this.end(room, { by: 'game', reason });
+        if (active()) this.end(room, { by: 'game', reason });
       },
     };
   }
 
-  private run(room: RoomRec, game: Game, name: string, timer: Timer) {
-    timer.endsAt = Date.now() + timer.remaining;
-    timer.handle = setTimeout(() => {
-      game.timers.delete(name);
-      this.broadcast(room, 'porter:timerCleared', { name });
-      try {
-        this.detachPromise(timer.callback(), room, `timer=${name}`);
-      } catch (error) {
-        this.logError(`room=${room.id} game=${game.entry.definition.name} timer=${name}`, error);
-      }
-    }, timer.remaining);
-  }
-
-  private remaining(game: Game, timer: Timer) {
-    return game.match.status === 'running' ? Math.max(0, timer.endsAt - Date.now()) : timer.remaining;
-  }
-
-  private end(room: RoomRec, reason: EndReason) {
-    const { game } = room;
-    for (const timer of game.timers.values()) clearTimeout(timer.handle);
-    game.timers.clear();
-    game.match = { status: 'ended', reason };
+  /** `false`, and nothing happens, without a Match under way. */
+  private end(room: RoomRec, reason: EndReason): boolean {
+    if (!room.game.match.end(reason)) return false;
     this.broadcast(room, 'porter:matchEnded', { reason });
     this.hook(room, 'onEnd', reason);
+    return true;
   }
 
   /** Calls a hook the Manager may not have. Whatever it throws is logged and goes no further. */
