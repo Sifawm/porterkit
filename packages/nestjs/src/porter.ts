@@ -78,6 +78,7 @@ interface RoomRec {
   game: Game;
 }
 
+type Reject = (reason: RejectReason<GamesMap>) => void;
 type Result<Reason> = { status: number; body?: { reason: Reason } };
 
 const DEFAULTS = { capacity: 16, maxNameLength: 20, maxProfileSize: 2048, pingInterval: 30_000, gracePeriod: 20_000 };
@@ -387,22 +388,9 @@ export class Porter {
       this.send(user, 'porter:messageRejected', { rejected: event, reason });
     const { game } = room;
     const { manager, definition } = game.entry;
-    /** Answers the sender for what the Game's code threw. */
-    const thrown = (what: string) => (error: unknown) => {
-      if (error instanceof GameRejection) return reject({ code: 'game', reason: error.reason });
-      reject('failed');
-      this.logError(`room=${room.id} game=${definition.name} ${what}`, error);
-    };
     /** Runs a synchronous method of the Game. `false` when it threw and the sender has been answered. */
-    const veto = (method: string, ...args: unknown[]) => {
-      try {
-        this.detachPromise(manager[method](game.ctx, ...args), room, `method=${method}`);
-        return true;
-      } catch (error) {
-        thrown(`method=${method}`)(error);
-        return false;
-      }
-    };
+    const veto = (method: string, ...args: unknown[]) =>
+      this.contain(room, game.entry, `method=${method}`, () => manager[method](game.ctx, ...args), { now: reject });
 
     if (event === 'porter:pong') return user.presence.pong();
 
@@ -410,15 +398,12 @@ export class Porter {
       const handler = game.entry.handlers.get(event);
       if (!handler) return reject('unhandled');
       if (handler.adminOnly && room.line.admin !== user) return reject('notAdmin');
-      try {
+      const deliver = () => {
         if (handler.guard && !handler.guard(data)) return reject('malformed');
         if (!handler.anyTime && !game.match.underWay) return reject('notAllowedNow');
-        const result = manager[handler.method](game.ctx, data, user.view);
-        if (isThenable(result)) result.then(undefined, thrown(`message=${event}`));
-      } catch (error) {
-        thrown(`message=${event}`)(error);
-      }
-      return;
+        return manager[handler.method](game.ctx, data, user.view);
+      };
+      return void this.contain(room, game.entry, `message=${event}`, deliver, { now: reject, later: reject });
     }
 
     if (!isCommand(event)) return reject('unhandled');
@@ -502,11 +487,7 @@ export class Porter {
       memory: undefined,
       match: new Match((name, callback) => {
         this.broadcast(room, 'porter:timerCleared', { name });
-        try {
-          this.detachPromise(callback(), room, `timer=${name}`);
-        } catch (error) {
-          this.logError(`room=${room.id} game=${entry.definition.name} timer=${name}`, error);
-        }
+        this.contain(room, entry, `timer=${name}`, callback);
       }),
       ctx: undefined!,
     };
@@ -578,20 +559,36 @@ export class Porter {
 
   /** Calls a hook the Manager may not have. Whatever it throws is logged and goes no further. */
   private hook(room: RoomRec, method: string, ...args: unknown[]) {
-    const { manager, definition } = room.game.entry;
-    if (typeof manager[method] !== 'function') return;
-    try {
-      this.detachPromise(manager[method](room.game.ctx, ...args), room, `method=${method}`);
-    } catch (error) {
-      this.logError(`room=${room.id} game=${definition.name} method=${method}`, error);
-    }
+    const { entry, ctx } = room.game;
+    if (typeof entry.manager[method] !== 'function') return;
+    this.contain(room, entry, `method=${method}`, () => entry.manager[method](ctx, ...args));
   }
 
-  /** A promise from the Integrator's code never becomes an unhandled rejection. */
-  private detachPromise(result: unknown, room: RoomRec, what: string) {
-    if (!isThenable(result)) return;
-    const game = room.game.entry.definition.name;
-    result.then(undefined, (error) => this.logError(`room=${room.id} game=${game} ${what}`, error));
+  /**
+   * Runs the Integrator's code. What it throws, or what a promise it returns rejects with, goes no further:
+   * it is logged, and a sender given for that moment is answered, a `ctx.reject` with its reason and without a log.
+   * `false` when it threw.
+   */
+  private contain(
+    room: RoomRec,
+    entry: Registered,
+    what: string,
+    run: () => unknown,
+    sender: { now?: Reject; later?: Reject } = {},
+  ): boolean {
+    const failed = (reject?: Reject) => (error: unknown) => {
+      if (reject && error instanceof GameRejection) return reject({ code: 'game', reason: error.reason });
+      reject?.('failed');
+      this.logError(`room=${room.id} game=${entry.definition.name} ${what}`, error);
+    };
+    try {
+      const result = run();
+      if (isThenable(result)) result.then(undefined, failed(sender.later));
+      return true;
+    } catch (error) {
+      failed(sender.now)(error);
+      return false;
+    }
   }
 
   private logError(what: string, error: unknown) {
