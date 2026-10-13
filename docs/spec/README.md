@@ -47,7 +47,7 @@ An Integrator that has several Games running on room code of its own can rebuild
 | Game messages | routing, the Admin and Match checks, rejections to the sender | the events, their data, a guard for each and the handlers |
 | Private data | keeping the Match memory on the server, never sending it | what goes in it |
 | Client state | the room, the Users and the Match, applied from Porter's messages; a Game's initial data | an Applier for each of its Game's messages that changes state |
-| Client interface | hooks and nothing visible | every component, route, guard, modal and text |
+| Client interface | hooks in React, signals in Godot, and nothing visible | every component, route, guard, modal and text |
 | Logging | errors from the Integrator's code and its own, through NestJS's logger | the logger |
 
 ## Out of v1

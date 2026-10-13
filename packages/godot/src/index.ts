@@ -45,8 +45,14 @@ export function exposeToGodot(porter: Porter<any, any>): GodotFacade {
       // ponytail: every change serializes the three parts to compare them, because what `game()`
       // returns is new after every change. Compare identities first if a state grows large.
       const tell = () => {
-        const changed = PARTS.filter((part) => told[part] !== (told[part] = read(part)));
-        if (changed.length) onChange(`{${changed.map((part) => `"${part}":${told[part]}`).join()}}`);
+        const changed: string[] = [];
+        for (const part of PARTS) {
+          const json = read(part);
+          if (json === told[part]) continue;
+          told[part] = json;
+          changed.push(`"${part}":${json}`);
+        }
+        if (changed.length) onChange(`{${changed.join()}}`);
       };
       tell();
       porter.subscribe(tell);

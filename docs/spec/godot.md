@@ -81,14 +81,14 @@ func timer_remaining(timer: String) -> float
 
 - `connection`, `room` and `game` are what the instance's `connection`, `room` and `game()` give, as a Dictionary. `room` and `game` are `null` where the instance has no room; `game` never throws.
 - After every change of the instance the addon is told once, with the parts whose JSON changed. It replaces those of its three variables first and emits their signals after, in the order `connection_changed`, `room_changed`, `game_changed`. A listener of any of them reads the three already updated: `connected` never comes without its room.
-- A part whose JSON did not change emits nothing. A Game message that changes only the Game's state does not emit `room_changed`.
+- A part whose JSON did not change emits nothing. A Game message that changes only the Game's state or settings does not emit `room_changed`; one that changes per-User data emits both, since the room's Users carry their data.
 - The addon reads the three parts when it loads, before any scene exists. A scene reads the variables in its `_ready` and connects the signals for what comes after.
 - Every value has been through JSON. A number is a `float`, also when it is whole on the server; an object is a `Dictionary` and a list an `Array`. Nothing is typed from the games map.
 - `match` is a keyword of GDScript: the Match of a Game is read as `game["match"]`.
 
 ### Calls
 
-- `login(request)` and `room_exists(room_id)` are awaited. `login` resolves with the result of the instance's `login`, `{ "ok": true, "roomId" }` or `{ "ok": false, "reason" }`; `room_exists` with a `bool`. Each resolves with `null` when the request itself failed, where the instance's promise rejects.
+- `login(request)` and `room_exists(room_id)` are awaited. `login` resolves with the result of the instance's `login`, `{ "ok": true, "roomId" }` or `{ "ok": false, "reason" }`; `room_exists` with a `bool`. Each resolves with `null` when the request itself failed, where the instance's promise rejects. Of several awaited at once, each gets its own answer.
 - `resume()`, `reconnect()` and `leave()` are the instance's own, with the same results.
 - `send(event, data)` sends `data` as the message's data, and no data when it is `null` or left out. It returns what the instance's `send` returns.
 - `on(event, listener)` calls `listener` with the data of every such event, `null` when it carries none, and returns the number that `off` takes. There is no listener for every event.

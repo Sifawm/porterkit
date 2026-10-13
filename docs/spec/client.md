@@ -399,6 +399,7 @@ export declare function memoryStorage(): PorterStorage & { map: Map<string, stri
 ```
 
 - The entry imports no test runner. The test puts `FakeSocket` in place of the global `WebSocket` with whatever its runner offers, and empties `FakeSocket.all` before each test.
+- Besides what is declared above, `FakeSocket` has the members of a `WebSocket` that the client itself uses.
 - `FakeSocket` is the WebSocket transport only. There is no fake of the SSE stream and none of `fetch`.
 - A test that needs no login stores a Token in a `memoryStorage()` under the key `porter` and calls `resume()`; the client then opens a `FakeSocket`, and `emit('porter:joined', …)` makes it `connected`.
 - Nothing else of the client's own tests is public: their Games and their fixtures are not exported.

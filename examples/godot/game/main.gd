@@ -34,20 +34,20 @@ func _closed() -> void:
 		if Porter.connection.reason == "unreachable":
 			_button("Try again", Porter.reconnect)
 			return
-	var user := LineEdit.new()
-	user.placeholder_text = "Name"
-	add_child(user)
+	var name_field := LineEdit.new()
+	name_field.placeholder_text = "Name"
+	add_child(name_field)
 	var room_id := LineEdit.new()
 	room_id.placeholder_text = "Room (empty creates one)"
 	room_id.text = str(JavaScriptBridge.eval("location.hash.slice(1)"))
 	add_child(room_id)
-	_button("Join or create", func() -> void: _login(user.text, room_id.text))
+	_button("Join or create", func() -> void: _login(name_field.text, room_id.text))
 	if _error != "":
 		_label(_error)
 
 
-func _login(user: String, room_id: String) -> void:
-	var request := {"name": user, "profile": null}
+func _login(user_name: String, room_id: String) -> void:
+	var request := {"name": user_name, "profile": null}
 	if room_id != "":
 		if await Porter.room_exists(room_id) == false:
 			return _fail("roomNotFound")

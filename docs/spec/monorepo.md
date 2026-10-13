@@ -70,7 +70,7 @@ A private example of four projects that uses the packages as an Integrator would
 - `examples/web`: Vite and React, on `@porterkit/client` and `@porterkit/react`, with no router and no component library. Login, waiting room and Match in one tree. The login screen has a selector of transport, WebSocket or SSE.
 - `examples/godot`: the same Game drawn by Godot, with nothing of React: a page of Vite whose only code creates the instance, calls `exposeToGodot` and starts the engine, and a Godot project in `game/` with login, waiting room and Match in one script. `game/addons/porter` is a link to the addon in `packages/godot`.
 - `pnpm dev` at the root starts server and web.
-- The Godot example needs Godot 4.7 with its web export templates, which CI does not have. `pnpm --filter @porterkit/example-godot export` writes the export into `public/godot`, which is not versioned, and `pnpm --filter @porterkit/example-godot start` serves the page. Neither is part of `pnpm dev` or of `pnpm check`.
+- The Godot example needs Godot 4.7 with its web export templates, which CI does not have. `pnpm --filter @porterkit/example-godot export` writes the export into `public/godot`, which is not versioned, and `pnpm --filter @porterkit/example-godot start` serves the page. Neither is part of `pnpm dev` or of `pnpm check`; `pnpm check` only typechecks the page's TypeScript, like any project.
 
 ## Tests
 
@@ -82,7 +82,7 @@ Vitest everywhere. There is no Jest, no Playwright and no coverage threshold.
 - **`nestjs`, the rest.** A few integration tests with `@nestjs/testing` (a login, a connection, one command), run on Fastify and on Express.
 - **`client`.** Through a fake `WebSocket` and a fake `fetch`, with fake timers: login, both transports, state, Appliers, and reconnection with `maxRetries`.
 - **`react`.** Hooks with `@testing-library/react` and jsdom, over the real client and the fake `WebSocket` of `@porterkit/client/testing`.
-- **`godot`.** The facade over the real client and the fake `WebSocket` of `@porterkit/client/testing`, in Node. The addon has no automatic test: the bridge it uses exists only in a web export running in a browser. It is checked by hand with `examples/godot`, and it is kept to parsing JSON and emitting signals so that there is little to check ([ADR 0008](../adr/0008-godot-crosses-in-json.md)).
+- **`godot`.** The facade over the real client and the fake `WebSocket` of `@porterkit/client/testing`, in Node. The addon has no automatic test: the bridge it uses exists only in a web export running in a browser. It is checked by hand with `examples/godot`, whose Game has no Match timer and takes no listener off: `timer_remaining`, `off` and `reconnect` have only the facade's tests behind them. It is kept to parsing JSON and emitting signals so that there is little to check ([ADR 0008](../adr/0008-godot-crosses-in-json.md)).
 - **End to end.** One suite in `examples/server` starts the example server and drives it with `@porterkit/client` from Node, with no Binding, once over WebSocket and once over SSE.
 
 ## Checks
