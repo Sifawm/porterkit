@@ -54,7 +54,7 @@ export type Connection =
 
 export type CloseReason = 'left' | 'kicked' | 'replaced' | 'unreachable' | ConnectRejectReason;
 
-/** A User as the hooks give it. `data` is its data in the active Game. */
+/** A User as the client gives it. `data` is its data in the active Game. */
 export interface User<Profile, Data = unknown> extends Readonly<WireUser<Profile>> {
   readonly data: Data;
 }
@@ -161,16 +161,4 @@ export interface Porter<Games extends GamesMap, Profile> {
   game(): AnyGameView<Games, Profile>;
   game<Name extends GameName<Games>>(name: Name): GameView<Games, Name, Profile>;
   timer(name: string): Timer | null;
-
-  readonly hooks: {
-    useConnection(): Connection;
-    useRoom(): RoomView<Games, Profile>;
-    useGame(): AnyGameView<Games, Profile>;
-    useGame<Name extends GameName<Games>>(name: Name): GameView<Games, Name, Profile>;
-    useTimer(name: string): Timer | null;
-    useEvent<E extends keyof Incoming<Games, Profile> & string>(
-      event: E,
-      listener: (data: Incoming<Games, Profile>[E]) => void,
-    ): void;
-  };
 }

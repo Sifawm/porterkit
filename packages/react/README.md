@@ -1,6 +1,6 @@
 # @porterkit/react
 
-Porter's client: it logs a User into a room, keeps its connection alive over WebSocket or SSE, holds the state of the room and of its active Game, and exposes both to React through hooks.
+Porter's Binding for React: it exposes the client of `@porterkit/client` (login, connection, the state of the room and of its active Game) to React through hooks.
 
 ```ts
 export const porter = createPorter<Games, Profile>({

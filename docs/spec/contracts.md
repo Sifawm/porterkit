@@ -4,7 +4,7 @@
 
 The types shared by server and client: the games map, every message of the [protocol](protocol.md), the shapes of a room and its Users on the wire, and the Game definition.
 
-It has no dependencies and emits no runtime code ([ADR 0006](../adr/0006-contracts-is-types-only.md)). It is safe to import from a browser. `@porterkit/nestjs` and `@porterkit/react` depend on it and import it with `import type`.
+It has no dependencies and emits no runtime code ([ADR 0006](../adr/0006-contracts-is-types-only.md)). It is safe to import from a browser. `@porterkit/nestjs`, `@porterkit/client` and `@porterkit/react` depend on it and import it with `import type`.
 
 ## Public API
 

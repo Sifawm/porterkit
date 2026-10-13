@@ -1,5 +1,4 @@
 import type { Envelope, GamesMap, Joined } from '@porterkit/contracts';
-import { useEffect, useRef, useSyncExternalStore } from 'react';
 import { createStore } from './store.js';
 import { type Link, openSse, openWs } from './transports.js';
 import type {
@@ -183,8 +182,6 @@ export function createPorter<Games extends GamesMap, Profile = unknown>(
     return () => void listeners.get(event)?.delete(listener);
   };
 
-  const useStore = <T>(read: () => T) => useSyncExternalStore(subscribe, read, read);
-
   const porter = {
     async login(request: object): Promise<LoginResult> {
       const response = await fetch(`${httpUrl}/porter/login`, {
@@ -253,27 +250,6 @@ export function createPorter<Games extends GamesMap, Profile = unknown>(
     },
     game,
     timer: store.timer,
-
-    hooks: {
-      useConnection: () => useStore(() => connection),
-      useRoom() {
-        const room = useStore(() => store.view()?.room ?? null);
-        if (!room) throw new Error('Porter: useRoom() without a room; render it only while connected');
-        return room;
-      },
-      useGame(name?: string) {
-        useStore(() => store.view());
-        return game(name);
-      },
-      useTimer: (name: string) => useStore(() => store.timer(name)),
-      useEvent(event: string, listener: (data: any) => void) {
-        const latest = useRef(listener);
-        useEffect(() => {
-          latest.current = listener;
-        });
-        useEffect(() => on(event, (data) => latest.current(data)), [event]);
-      },
-    },
   };
   return porter as unknown as Porter<Games, Profile>;
 }

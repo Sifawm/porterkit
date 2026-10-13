@@ -1,6 +1,6 @@
 # Monorepo
 
-Where the three packages live, how they are built, tested and checked, and how they are published. What each package exports is in [contracts.md](contracts.md), [nestjs.md](nestjs.md) and [react.md](react.md).
+Where the four packages live, how they are built, tested and checked, and how they are published. What each package exports is in [contracts.md](contracts.md), [nestjs.md](nestjs.md), [client.md](client.md) and [react.md](react.md).
 
 ## Layout
 
@@ -10,6 +10,7 @@ One Nx 23 workspace over pnpm workspaces and TypeScript project references. Ther
 |---|---|---|
 | `packages/contracts` | `@porterkit/contracts` | yes |
 | `packages/nestjs` | `@porterkit/nestjs` | yes |
+| `packages/client` | `@porterkit/client` | yes |
 | `packages/react` | `@porterkit/react` | yes |
 | `examples/game` | `@porterkit/example-game` | no (`private: true`) |
 | `examples/server` | `@porterkit/example-server` | no (`private: true`) |
@@ -23,17 +24,17 @@ One Nx 23 workspace over pnpm workspaces and TypeScript project references. Ther
 
 ## Packages
 
-| | `contracts` | `nestjs` | `react` |
-|---|---|---|---|
-| Module format | ESM | CommonJS | ESM |
-| Dependencies | none | `@porterkit/contracts` | `@porterkit/contracts` |
-| Peer dependencies | none | see below | `react` `^18.0.0 \|\| ^19.0.0` |
-| `engines.node` | not declared | `>=22.12` | not declared |
+| | `contracts` | `nestjs` | `client` | `react` |
+|---|---|---|---|---|
+| Module format | ESM | CommonJS | ESM | ESM |
+| Dependencies | none | `@porterkit/contracts` | `@porterkit/contracts` | `@porterkit/contracts`, `@porterkit/client` |
+| Peer dependencies | none | see below | none | `react` `^18.0.0 \|\| ^19.0.0` |
+| `engines.node` | not declared | `>=22.12` | not declared | not declared |
 
-- All three are compiled with `tsc --build` through project references, by the `build` target Nx infers. Nothing is bundled.
+- All four are compiled with `tsc --build` through project references, by the `build` target Nx infers. Nothing is bundled.
 - The `package.json` in each package directory is the one published, with `files` limited to the build output. Peer dependencies are written in it by hand.
 - `@porterkit/contracts` emits no runtime code and has no dependency, `tslib` included: `importHelpers` is off.
-- `@porterkit/nestjs` and `@porterkit/react` depend on `@porterkit/contracts` at the exact version of their own release. In the source the dependency is `workspace:*`.
+- A package depends on another package of the workspace at the exact version of their common release. In the source the dependency is `workspace:*`.
 - Peer dependencies of `@porterkit/nestjs`:
 
   | Package | Range |
@@ -44,9 +45,10 @@ One Nx 23 workspace over pnpm workspaces and TypeScript project references. Ther
 
 - `@porterkit/nestjs` is developed and tested against NestJS 11. NestJS 12 is not in its peer range.
 - `@nestjs/platform-ws`, `ws`, Express and Fastify are not dependencies of any package. The Integrator installs them.
+- `@porterkit/client` uses the global `WebSocket`, `fetch` and timers and nothing of a browser besides: its tests run in Node, without jsdom.
 - `@porterkit/react` is developed and tested against React 19. React 18 is in its peer range and is not tested: the package uses `useSyncExternalStore`, `useEffect` and `useRef` and nothing newer. React 17 is out, and there is no shim.
 - `@porterkit/react` has one entry point, the package root. There is no entry without React: importing the package loads `react`, and nothing calls it until a component uses a hook.
-- All three declare `"license": "MIT"` and `"repository"` as `https://github.com/Sifawm/porter`, each with the `directory` of its package.
+- All four declare `"license": "MIT"` and `"repository"` as `https://github.com/Sifawm/porter`, each with the `directory` of its package.
 
 ## TypeScript
 
@@ -67,12 +69,13 @@ A private example of three projects that uses the packages as an Integrator woul
 
 Vitest everywhere. There is no Jest, no Playwright and no coverage threshold.
 
-- **Transformer.** Oxc, the default of Vite 8, in `contracts`, `react`, `examples/game` and `examples/web`. `unplugin-swc` with `@swc/core` in `nestjs` and `examples/server`, which need decorator metadata.
+- **Transformer.** Oxc, the default of Vite 8, in `contracts`, `client`, `react`, `examples/game` and `examples/web`. `unplugin-swc` with `@swc/core` in `nestjs` and `examples/server`, which need decorator metadata.
 - **`contracts`.** Type tests only (`expectTypeOf` under Vitest's typecheck). It has no runtime to test.
 - **`nestjs`, the bulk.** Room rules and the connection lifecycle through the internal `connect(token, sink)` function ([nestjs.md](nestjs.md#connections)), with a fake sink and fake timers. No network and no NestJS application.
 - **`nestjs`, the rest.** A few integration tests with `@nestjs/testing` (a login, a connection, one command), run on Fastify and on Express.
-- **`react`.** Hooks with `@testing-library/react` and jsdom against a fake transport: state, Appliers, and reconnection with `maxRetries`.
-- **End to end.** One suite in `examples/server` starts the example server and drives it with the real client of `@porterkit/react` from Node, without mounting React, once over WebSocket and once over SSE.
+- **`client`.** Through a fake `WebSocket` and a fake `fetch`, with fake timers: login, both transports, state, Appliers, and reconnection with `maxRetries`.
+- **`react`.** Hooks with `@testing-library/react` and jsdom, over the real client and the same fake `WebSocket`.
+- **End to end.** One suite in `examples/server` starts the example server and drives it with the real client from Node, with nothing mounted, once over WebSocket and once over SSE.
 
 ## Checks
 
@@ -85,7 +88,7 @@ Vitest everywhere. There is no Jest, no Playwright and no coverage threshold.
 ## Versions
 
 - Node 24 for development. CI runs on Node 22 and 24.
-- The three packages share one version. The first release is `0.1.0`.
+- The four packages share one version. The first release is `0.1.0`.
 - While the version is `0.x`, a change to the protocol raises the minor and a compatible change raises the patch.
 - `1.0.0` is set by hand, when the goal of v1 in [README.md](README.md#goal-of-v1) is met.
 
@@ -93,7 +96,7 @@ Vitest everywhere. There is no Jest, no Playwright and no coverage threshold.
 
 - The registry is public npm, under the scope `@porterkit`. The repository is `Sifawm/porter` on GitHub, public, and the licence is MIT.
 - `nx release` versions and publishes `packages/*` only, as one fixed group. The version comes from conventional commits. It writes one `CHANGELOG.md` at the root and tags `vX.Y.Z`. There is no semantic-release.
-- Releases are published from GitHub Actions with npm trusted publishing (OIDC) and signed provenance. No npm token is stored. Each of the three packages trusts the repository `Sifawm/porter` and the workflow `release.yml`.
+- Releases are published from GitHub Actions with npm trusted publishing (OIDC) and signed provenance. No npm token is stored. Each of the four packages trusts the repository `Sifawm/porter` and the workflow `release.yml`.
 
 Two workflows, both started by hand:
 

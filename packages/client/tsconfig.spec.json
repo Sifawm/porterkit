@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "out-tsc",
+    "emitDeclarationOnly": true,
+    "lib": ["es2023", "dom", "dom.iterable"],
+    "types": ["node"]
+  },
+  "include": ["src/**/*.test.ts", "src/**/*.test-d.ts", "src/testing.ts", "vitest.config.ts"],
+  "references": [{ "path": "./tsconfig.lib.json" }]
+}

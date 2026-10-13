@@ -4,6 +4,7 @@
   "references": [
     { "path": "./packages/contracts" },
     { "path": "./packages/nestjs" },
+    { "path": "./packages/client" },
     { "path": "./packages/react" },
     { "path": "./examples/game" },
     { "path": "./examples/server" },

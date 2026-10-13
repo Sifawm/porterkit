@@ -435,3 +435,20 @@ test('porter:joined brings the timers of a Match under way, frozen when it is pa
   expect(porter.timer('round')).toMatchObject({ paused: true });
   expect(porter.timer('round')!.remaining()).toBe(700);
 });
+
+test('several subscribers and listeners read one instance, as several Bindings would', async () => {
+  const { porter, connected } = setup();
+  const seen: string[] = [];
+  const stop = porter.subscribe(() => seen.push(`a:${porter.connection.status}`));
+  porter.subscribe(() => seen.push(`b:${porter.connection.status}`));
+  porter.on('cheered', (who) => seen.push(`a heard ${who}`));
+  porter.on('cheered', (who) => seen.push(`b heard ${who}`));
+  const socket = await connected();
+  expect(seen).toEqual(['a:connecting', 'b:connecting', 'a:connected', 'b:connected']);
+
+  seen.length = 0;
+  stop();
+  socket.emit('cheered', 'Bea');
+  socket.emit('incremented', { by: 'Bea', count: 1 });
+  expect(seen).toEqual(['a heard Bea', 'b heard Bea', 'b:connected']);
+});

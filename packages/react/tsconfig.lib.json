@@ -8,6 +8,6 @@
     "jsx": "react-jsx"
   },
   "include": ["src/**/*.ts", "src/**/*.tsx"],
-  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx", "src/**/*.test-d.ts", "src/testing.ts"],
-  "references": [{ "path": "../contracts/tsconfig.lib.json" }]
+  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx"],
+  "references": [{ "path": "../contracts/tsconfig.lib.json" }, { "path": "../client/tsconfig.lib.json" }]
 }

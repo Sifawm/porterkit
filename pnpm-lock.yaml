@@ -128,6 +128,12 @@ importers:
         specifier: ^6.0.0
         version: 6.1.2(vite@8.3.4(@types/node@24.19.2)(jiti@2.6.1)(yaml@2.9.0))
 
+  packages/client:
+    dependencies:
+      '@porterkit/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+
   packages/contracts: {}
 
   packages/nestjs:
@@ -172,6 +178,9 @@ importers:
 
   packages/react:
     dependencies:
+      '@porterkit/client':
+        specifier: workspace:*
+        version: link:../client
       '@porterkit/contracts':
         specifier: workspace:*
         version: link:../contracts

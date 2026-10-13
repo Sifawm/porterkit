@@ -1,7 +1,8 @@
 import { act, render, renderHook, screen } from '@testing-library/react';
 import { memo, StrictMode, useEffect } from 'react';
 import { afterEach, expect, test, vi } from 'vitest';
-import { FakeSocket, joined, setup } from './testing.js';
+import { FakeSocket, joined, setup } from '../../client/src/testing.js';
+import { createHooks } from './hooks.js';
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -10,7 +11,8 @@ afterEach(() => {
 
 test('the hooks read what the instance holds and re-render when it changes', async () => {
   const { porter, connected } = setup();
-  const { useConnection, useRoom, useGame } = porter.hooks;
+  const hooks = createHooks(porter);
+  const { useConnection, useRoom, useGame } = hooks;
   const connection = renderHook(() => useConnection());
   expect(connection.result.current).toEqual({ status: 'idle' });
 
@@ -31,23 +33,25 @@ test('the hooks read what the instance holds and re-render when it changes', asy
 
 test('useRoom and useGame throw without a room, and useGame for a Game that is not the active one', async () => {
   const { porter, connected } = setup();
+  const hooks = createHooks(porter);
   vi.spyOn(console, 'error').mockImplementation(() => {});
-  expect(() => renderHook(() => porter.hooks.useRoom())).toThrow();
-  expect(() => renderHook(() => porter.hooks.useGame())).toThrow();
+  expect(() => renderHook(() => hooks.useRoom())).toThrow();
+  expect(() => renderHook(() => hooks.useGame())).toThrow();
   await act(async () => void (await connected()));
-  expect(renderHook(() => porter.hooks.useGame()).result.current.name).toBe('counter');
-  expect(() => renderHook(() => porter.hooks.useGame('quiz'))).toThrow(/counter/);
+  expect(renderHook(() => hooks.useGame()).result.current.name).toBe('counter');
+  expect(() => renderHook(() => hooks.useGame('quiz'))).toThrow(/counter/);
 });
 
 test('a memoized component re-renders only when its piece of the state changes', async () => {
   const { porter, connected } = setup();
+  const hooks = createHooks(porter);
   const renders = vi.fn();
   const Row = memo(function Row({ user }: { user: { name: string; data: unknown } }) {
     renders(user.name);
     return <li>{`${user.name}:${JSON.stringify(user.data)}`}</li>;
   });
   function List() {
-    const { users } = porter.hooks.useGame('counter');
+    const { users } = hooks.useGame('counter');
     return (
       <ul>
         {users.map((user) => (
@@ -68,9 +72,10 @@ test('a memoized component re-renders only when its piece of the state changes',
 
 test('useTimer gives the timer of that name, or null', async () => {
   const { porter, connected } = setup();
+  const hooks = createHooks(porter);
   let socket!: FakeSocket;
   await act(async () => void (socket = await connected()));
-  const timer = renderHook(() => porter.hooks.useTimer('round'));
+  const timer = renderHook(() => hooks.useTimer('round'));
   expect(timer.result.current).toBeNull();
   act(() => {
     socket.emit('porter:matchStarted');
@@ -82,11 +87,12 @@ test('useTimer gives the timer of that name, or null', async () => {
 
 test('useEvent calls the latest listener without subscribing again on every render', async () => {
   const { porter, connected } = setup();
+  const hooks = createHooks(porter);
   let socket!: FakeSocket;
   await act(async () => void (socket = await connected()));
   const on = vi.spyOn(porter, 'on');
   const heard: string[] = [];
-  const hook = renderHook(({ tag }) => porter.hooks.useEvent('cheered', (who) => heard.push(`${tag}:${who}`)), {
+  const hook = renderHook(({ tag }) => hooks.useEvent('cheered', (who) => heard.push(`${tag}:${who}`)), {
     initialProps: { tag: 'first' },
   });
   hook.rerender({ tag: 'second' });
@@ -100,10 +106,11 @@ test('useEvent calls the latest listener without subscribing again on every rend
 
 test('resume in an effect is safe under StrictMode', () => {
   const { porter, storage } = setup();
+  const hooks = createHooks(porter);
   storage.map.set('porter', '{"token":"room000001.secret","roomId":"room000001"}');
   function Page() {
     useEffect(() => void porter.resume(), []);
-    return <p>{porter.hooks.useConnection().status}</p>;
+    return <p>{hooks.useConnection().status}</p>;
   }
   render(
     <StrictMode>

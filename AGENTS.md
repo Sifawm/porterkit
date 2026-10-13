@@ -1,6 +1,6 @@
 # Porter
 
-Real-time rooms as a library: `@porterkit/contracts` (types), `@porterkit/nestjs` (server), `@porterkit/react` (client).
+Real-time rooms as a library: `@porterkit/contracts` (types), `@porterkit/nestjs` (server), `@porterkit/client` (client), `@porterkit/react` (its Binding for React).
 
 - The specification in `docs/spec/` is normative. Read the file for the package you touch before changing it, and change the spec in the same commit when behaviour changes.
 - Use the vocabulary of `CONTEXT.md` in code, tests and commits. The ADRs in `docs/adr/` give the reasons for the decisions.

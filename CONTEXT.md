@@ -8,6 +8,10 @@ A reusable server-side library for real-time rooms: it authenticates users into 
 The project that installs Porter and supplies everything specific to its own product.
 _Avoid_: Consumer, client, host app
 
+**Binding**:
+A package that exposes Porter's client to one framework or engine. It reads the client and adds nothing to the protocol or to the state. Whoever writes a Binding is not an Integrator.
+_Avoid_: Adapter, integration, wrapper
+
 **User**:
 A named participant in exactly one room. A User has no existence outside its room; the name is its identity there.
 _Avoid_: Player, account, member

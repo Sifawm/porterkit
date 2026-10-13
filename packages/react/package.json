@@ -1,7 +1,7 @@
 {
   "name": "@porterkit/react",
   "version": "0.0.0",
-  "description": "Porter's client: login, connection, state and React hooks.",
+  "description": "Porter's Binding for React: the client's state as hooks.",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -29,6 +29,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@porterkit/client": "workspace:*",
     "@porterkit/contracts": "workspace:*"
   },
   "devDependencies": {

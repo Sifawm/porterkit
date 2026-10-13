@@ -43,7 +43,7 @@ const frozen = (ms: number): Timer => ({ paused: true, remaining: () => ms });
 const retime = (timers: State['timers'], make: (ms: number) => Timer) =>
   Object.fromEntries(Object.entries(timers).map(([name, timer]) => [name, make(timer.remaining())]));
 
-/** The room's state on the client and the views the hooks read from it. Telling the subscribers is the caller's. */
+/** The room's state on the client and the views a Binding reads from it. Telling the subscribers is the caller's. */
 export interface Store {
   /** Takes one envelope, `porter:joined` included. Whether the state changed. */
   receive(envelope: Envelope): boolean;
@@ -62,7 +62,7 @@ export function createStore(games: Record<string, ClientGame<any, any> | undefin
   let userCache = new Map<string, User<unknown>>();
   let lastUsers: readonly User<unknown>[] = [];
 
-  /** The room and the Game as the hooks give them, built once per state. */
+  /** The room and the Game as the client gives them, built once per state. */
   const view = () => {
     if (!state) return null;
     if (viewsOf === state) return views!;
