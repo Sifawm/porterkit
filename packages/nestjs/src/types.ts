@@ -19,7 +19,7 @@ export interface PorterModuleOptions<Games extends GamesMap> {
 
 export type AnyDefinition = GameDefinition<any, string>;
 
-type Args<Data> = [Data] extends [undefined] ? [] : [data: Data];
+export type Args<Data> = [Data] extends [undefined] ? [] : [data: Data];
 type Send<Server> = <E extends keyof Server & string>(event: E, ...data: Args<Server[E]>) => void;
 
 export interface User<Data, Server> {

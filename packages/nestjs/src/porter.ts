@@ -5,12 +5,25 @@ import type {
   CommandRejectReason,
   ConnectRejectReason,
   EndReason,
+  GamesMap,
+  Joined,
   LoginRejectReason,
   LoginResponse,
   MatchStatus,
+  PorterCommands,
+  PorterEvents,
+  RejectReason,
+  UserStatus,
 } from '@porterkit/contracts';
 import { definitionOf, type Handler, handlersIn } from './decorators';
-import { type AnyDefinition, type GameContext, GameRejection, type PorterModuleOptions, type User } from './types';
+import {
+  type AnyDefinition,
+  type Args,
+  type GameContext,
+  GameRejection,
+  type PorterModuleOptions,
+  type User,
+} from './types';
 
 /** What an adapter gives Porter. `send` serializes the message before it returns. */
 export interface Sink {
@@ -90,16 +103,25 @@ const VALID: Record<string, (value: unknown) => boolean> = {
   validateProfile: (value) => typeof value === 'function',
 };
 
-const COMMANDS = new Set([
-  'porter:lockRoom',
-  'porter:kickUser',
-  'porter:changeGame',
-  'porter:updateSettings',
-  'porter:startMatch',
-  'porter:pauseMatch',
-  'porter:continueMatch',
-  'porter:endMatch',
-]);
+/** Porter's own events, with whatever a Game defines left open. */
+type Events = PorterEvents<GamesMap, unknown>;
+type Command = Exclude<keyof PorterCommands<GamesMap>, 'porter:pong'>;
+
+const COMMANDS = {
+  'porter:lockRoom': true,
+  'porter:kickUser': true,
+  'porter:changeGame': true,
+  'porter:updateSettings': true,
+  'porter:startMatch': true,
+  'porter:pauseMatch': true,
+  'porter:continueMatch': true,
+  'porter:endMatch': true,
+} satisfies Record<Command, true>;
+const isCommand = (event: string): event is Command => Object.hasOwn(COMMANDS, event);
+
+const envelope = (event: string, data?: unknown) => (data === undefined ? { event } : { event, data });
+/** One of Porter's own events as it travels. A Game's events go through `envelope`. */
+const own = <E extends keyof Events>(event: E, ...data: Args<Events[E]>) => envelope(event, ...(data as [unknown?]));
 
 const ROOM_ID = /^[a-z0-9]{10}$/;
 const TOKEN = /^([a-z0-9]{10})\.([A-Za-z0-9_-]{43})$/;
@@ -110,7 +132,7 @@ const isObject = (value: unknown): value is Record<string, unknown> =>
 const isThenable = (value: unknown): value is PromiseLike<unknown> =>
   typeof (value as { then?: unknown } | null)?.then === 'function';
 const underWay = (game: Game) => game.match.status === 'running' || game.match.status === 'paused';
-const isVisible = (user: UserRec) => user.status !== 'pending';
+const isVisible = (user: UserRec): user is UserRec & { status: UserStatus } => user.status !== 'pending';
 const NO_CONNECTION: Connection = { receive() {}, closed() {} };
 
 /** The rooms and everything that happens in them. The transports and NestJS stay outside. */
@@ -190,7 +212,7 @@ export class Porter {
       get data() {
         return user.data;
       },
-      send: (event: string, data?: unknown) => this.send(user, event, data),
+      send: (event: string, data?: unknown) => user.sink?.send(envelope(event, data)),
     };
 
     if (!room) {
@@ -231,7 +253,7 @@ export class Porter {
   connect(token: unknown, sink: Sink): Connection {
     const found = this.verify(token);
     if ('reason' in found) {
-      sink.send({ event: 'porter:rejected', data: { reason: found.reason } });
+      sink.send(own('porter:rejected', { reason: found.reason }));
       sink.close();
       return NO_CONNECTION;
     }
@@ -241,7 +263,7 @@ export class Porter {
     if (before === 'connected') {
       const old = user.sink!;
       this.detach(user);
-      old.send({ event: 'porter:replaced' });
+      old.send(own('porter:replaced'));
       old.close();
     } else {
       clearTimeout(user.grace);
@@ -266,11 +288,14 @@ export class Porter {
       before !== 'connected' && (earlier || room.admin.status !== 'connected') && this.setAdmin(room, user);
 
     this.send(user, 'porter:joined', this.joined(room, user));
+    const others = room.users.filter((other) => other !== user);
     if (before === 'pending') {
-      const wire = { name: user.name, profile: user.profile, status: 'connected' };
-      this.broadcast(room, 'porter:userJoined', { user: wire }, user);
+      const wire = { name: user.name, profile: user.profile, status: 'connected' as const };
+      for (const other of others) this.send(other, 'porter:userJoined', { user: wire });
     }
-    if (before === 'reconnecting') this.broadcast(room, 'porter:userReconnected', { name: user.name }, user);
+    if (before === 'reconnecting') {
+      for (const other of others) this.send(other, 'porter:userReconnected', { name: user.name });
+    }
     if (adminChanged) this.broadcast(room, 'porter:adminChanged', { admin: user.name });
 
     return {
@@ -306,8 +331,9 @@ export class Porter {
     return user ? { room, user } : { reason: 'notInRoom' };
   }
 
-  private joined(room: RoomRec, user: UserRec) {
+  private joined(room: RoomRec, user: UserRec): Joined<GamesMap, unknown> {
     const { game } = room;
+    const { match } = game;
     const users = room.users.filter(isVisible);
     const timers = Object.fromEntries([...game.timers].map(([name, timer]) => [name, this.remaining(game, timer)]));
     return {
@@ -322,7 +348,7 @@ export class Porter {
         settings: game.settings,
         state: game.state,
         userData: Object.fromEntries(users.map((u) => [u.name, u.data])),
-        match: underWay(game) ? { ...game.match, timers } : game.match,
+        match: match.status === 'running' || match.status === 'paused' ? { ...match, timers } : match,
       },
     };
   }
@@ -390,12 +416,12 @@ export class Porter {
     return true;
   }
 
-  private send(user: UserRec, event: string, data?: unknown) {
-    user.sink?.send(data === undefined ? { event } : { event, data });
+  private send<E extends keyof Events>(user: UserRec, event: E, ...data: Args<Events[E]>) {
+    user.sink?.send(own(event, ...data));
   }
 
-  private broadcast(room: RoomRec, event: string, data?: unknown, except?: UserRec) {
-    for (const user of room.users) if (user !== except) this.send(user, event, data);
+  private broadcast<E extends keyof Events>(room: RoomRec, event: E, ...data: Args<Events[E]>) {
+    for (const user of room.users) this.send(user, event, ...data);
   }
 
   // ── Messages ────────────────────────────────────────────────────────────
@@ -409,12 +435,12 @@ export class Porter {
   }
 
   private dispatch(room: RoomRec, user: UserRec, raw: unknown) {
-    const reject = (reason: unknown) =>
-      this.send(user, 'porter:messageRejected', { rejected: isObject(raw) ? raw.event : '', reason });
     if (!isObject(raw) || typeof raw.event !== 'string') {
       return this.send(user, 'porter:messageRejected', { rejected: '', reason: 'malformed' });
     }
     const { event, data } = raw;
+    const reject = (reason: RejectReason<GamesMap>) =>
+      this.send(user, 'porter:messageRejected', { rejected: event, reason });
     const { game } = room;
     const { manager, definition } = game.entry;
     /** Answers the sender for what the Game's code threw. */
@@ -451,7 +477,7 @@ export class Porter {
       return;
     }
 
-    if (!COMMANDS.has(event)) return reject('unhandled');
+    if (!isCommand(event)) return reject('unhandled');
     if (room.admin !== user) return reject('notAdmin');
 
     switch (event) {
@@ -466,7 +492,7 @@ export class Porter {
         const target = room.users.find((u) => isVisible(u) && u.name === data.name);
         if (!target) return reject('notFound');
         const sink = target.sink;
-        sink?.send({ event: 'porter:kicked' });
+        sink?.send(own('porter:kicked'));
         this.detach(target);
         sink?.close();
         return this.leave(room, target, 'kicked');
@@ -525,6 +551,8 @@ export class Porter {
         if (!underWay(game)) return reject('notAllowedNow');
         return this.end(room, { by: 'admin' });
       }
+      default:
+        return event satisfies never;
     }
   }
 
@@ -571,7 +599,7 @@ export class Porter {
         },
         user: (name: string) => room.users.find((u) => isVisible(u) && u.name === name)?.view,
         broadcast: (event: string, data?: unknown) => {
-          if (active()) this.broadcast(room, event, data);
+          if (active()) for (const user of room.users) user.sink?.send(envelope(event, data));
         },
       },
       game: {
