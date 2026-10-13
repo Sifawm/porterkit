@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { createPorter } from './porter.js';
-import { FakeSocket, type Games, games, joined, setup } from './testing.js';
+import { type Games, games, joined, setup } from './fixtures.js';
+import { FakeSocket } from './testing.js';
 
 beforeEach(() => void vi.useFakeTimers());
 afterEach(() => {

@@ -5,10 +5,10 @@
 The client: it logs a User into a room, keeps its connection alive over WebSocket or SSE and holds the state of the room and of its active Game. It knows no framework: a Binding exposes it to one, as [react.md](react.md) does for React. The messages are in [protocol.md](protocol.md) and their types in [contracts.md](contracts.md); this file says what the client does with them and what an Integrator or a Binding writes against it.
 
 - Dependency: `@porterkit/contracts`. No peer dependency.
-- One entry point, the package root.
+- Two entry points: the package root, and `@porterkit/client/testing` with the fakes of "Testing".
 - It runs wherever `WebSocket`, `fetch` and timers are global: a browser, and Node with nothing mounted.
 - It uses no state library, no dependency injection, no router and no device detection.
-- It exports `createPorter`, `defineGame` and types.
+- The root exports `createPorter`, `defineGame` and types.
 
 The client keeps a Game's data as immutable plain data, never as instances of the Integrator's classes ([ADR 0005](../adr/0005-client-state-is-plain-data.md)).
 
@@ -370,6 +370,38 @@ What the client does with each of Porter's messages:
 - **What has to outlive a reconnection** is in the Game's state. What a front keeps from a listener in its own state is lost on reconnecting, because `porter:joined` replaces everything and replays nothing.
 - **Guards.** "Connected" is `connection.status === 'connected'`; "the room exists" is `porter.roomExists(id)`.
 - **Rejections.** `porter:messageRejected` is shown by whoever sent the message, from a listener; a `porter:startMatch` the Game vetoes arrives there with `{ code: 'game', reason }`.
+
+## Testing
+
+`@porterkit/client/testing` is for the tests of a Binding or of an Integrator's front: they run the real client and stand in for the server.
+
+```ts
+import type { Envelope } from '@porterkit/contracts';
+import type { PorterStorage } from '@porterkit/client';
+
+/** The other end of a WebSocket, driven by the test. */
+export declare class FakeSocket {
+  /** Every socket opened, oldest first. */
+  static all: FakeSocket[];
+  static readonly last: FakeSocket;
+  readonly url: string;
+  /** What the client sent. */
+  sent: Envelope[];
+  constructor(url: string);
+  /** The server sends a message. */
+  emit(event: string, data?: unknown): void;
+  /** The connection drops. */
+  drop(): void;
+}
+
+/** A `storage` option that keeps what the client stores in `map`. */
+export declare function memoryStorage(): PorterStorage & { map: Map<string, string> };
+```
+
+- The entry imports no test runner. The test puts `FakeSocket` in place of the global `WebSocket` with whatever its runner offers, and empties `FakeSocket.all` before each test.
+- `FakeSocket` is the WebSocket transport only. There is no fake of the SSE stream and none of `fetch`.
+- A test that needs no login stores a Token in a `memoryStorage()` under the key `porter` and calls `resume()`; the client then opens a `FakeSocket`, and `emit('porter:joined', …)` makes it `connected`.
+- Nothing else of the client's own tests is public: their Games and their fixtures are not exported.
 
 ## Usage
 

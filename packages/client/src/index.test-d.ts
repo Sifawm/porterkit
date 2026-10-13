@@ -1,6 +1,6 @@
 import { expectTypeOf, test } from 'vitest';
 import type { Incoming, Outgoing, Porter } from './index.js';
-import type { Games, Profile } from './testing.js';
+import type { Games, Profile } from './fixtures.js';
 
 declare const porter: Porter<Games, Profile>;
 

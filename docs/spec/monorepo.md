@@ -48,6 +48,7 @@ One Nx 23 workspace over pnpm workspaces and TypeScript project references. Ther
 - `@porterkit/client` uses the global `WebSocket`, `fetch` and timers and nothing of a browser besides: its tests run in Node, without jsdom.
 - `@porterkit/react` is developed and tested against React 19. React 18 is in its peer range and is not tested: the package uses `useSyncExternalStore`, `useEffect` and `useRef` and nothing newer. React 17 is out, and there is no shim.
 - `@porterkit/client` is a peer dependency of `@porterkit/react`, not a dependency: the Integrator installs it to create the instance, and the Binding imports only its types.
+- `@porterkit/client` has a second entry point, `@porterkit/client/testing`, with a fake `WebSocket` and a storage in memory for the tests of a Binding or of an Integrator. It imports no test runner, so Vitest is not a dependency of the package.
 - `@porterkit/react` has one entry point, the package root.
 - All four declare `"license": "MIT"` and `"repository"` as `https://github.com/Sifawm/porter`, each with the `directory` of its package.
 
@@ -75,7 +76,7 @@ Vitest everywhere. There is no Jest, no Playwright and no coverage threshold.
 - **`nestjs`, the bulk.** Room rules and the connection lifecycle through the internal `connect(token, sink)` function ([nestjs.md](nestjs.md#connections)), with a fake sink and fake timers. No network and no NestJS application.
 - **`nestjs`, the rest.** A few integration tests with `@nestjs/testing` (a login, a connection, one command), run on Fastify and on Express.
 - **`client`.** Through a fake `WebSocket` and a fake `fetch`, with fake timers: login, both transports, state, Appliers, and reconnection with `maxRetries`.
-- **`react`.** Hooks with `@testing-library/react` and jsdom, over the real client and the same fake `WebSocket`.
+- **`react`.** Hooks with `@testing-library/react` and jsdom, over the real client and the fake `WebSocket` of `@porterkit/client/testing`.
 - **End to end.** One suite in `examples/server` starts the example server and drives it with `@porterkit/client` from Node, with no Binding, once over WebSocket and once over SSE.
 
 ## Checks

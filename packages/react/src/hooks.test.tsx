@@ -1,8 +1,9 @@
 import { act, render, renderHook, screen } from '@testing-library/react';
 import { memo, StrictMode, useEffect } from 'react';
 import { afterEach, expect, test, vi } from 'vitest';
-import { FakeSocket, joined, setup } from '../../client/src/testing.js';
+import { FakeSocket } from '@porterkit/client/testing';
 import { createHooks } from './hooks.js';
+import { joined, setup } from './testing.js';
 
 afterEach(() => {
   vi.unstubAllGlobals();

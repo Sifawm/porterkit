@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
-import { FakeStream, joined, settle, setup } from './testing.js';
+import { FakeStream, joined, settle, setup } from './fixtures.js';
 
 beforeEach(() => void vi.useFakeTimers());
 afterEach(() => {

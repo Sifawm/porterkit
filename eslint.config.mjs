@@ -14,7 +14,7 @@ export default [
           ignoredFiles: [
             '{projectRoot}/vitest.config.{ts,mts}',
             '{projectRoot}/src/**/*.test{,-d}.{ts,tsx}',
-            '{projectRoot}/src/{testing,test-setup}.ts',
+            '{projectRoot}/src/{testing,fixtures,test-setup}.ts',
           ],
         },
       ],
