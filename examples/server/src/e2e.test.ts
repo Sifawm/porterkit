@@ -79,15 +79,18 @@ test.each<Transport>(['ws', 'sse'])('a whole Match over %s', async (transport) =
   expect(bea.room).toMatchObject({ admin: 'Ana', isAdmin: false });
 
   const rejections: unknown[] = [];
-  bea.on('porter:messageRejected', (rejection) => rejections.push(rejection));
+  const bothRejected = new Promise<void>((resolve) => {
+    bea.on('porter:messageRejected', (rejection) => rejections.push(rejection) === 2 && resolve());
+  });
   bea.send('porter:startMatch');
   bea.send('increment');
-  ana.send('porter:updateSettings', { target: 3 });
-  await until(bea, () => bea.game('counter').settings.target === 3);
+  await bothRejected;
   expect(rejections).toEqual([
     { rejected: 'porter:startMatch', reason: 'notAdmin' },
     { rejected: 'increment', reason: 'notAllowedNow' },
   ]);
+  ana.send('porter:updateSettings', { target: 3 });
+  await until(bea, () => bea.game('counter').settings.target === 3);
 
   ana.send('porter:startMatch');
   await until(bea, () => bea.game().match.status === 'running');

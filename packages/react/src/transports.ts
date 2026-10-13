@@ -93,9 +93,13 @@ export function openSse(httpUrl: string, token: string, on: LinkEvents): Link {
   };
   read().catch(() => down());
 
+  /** The message before, answered or not. */
+  let before: Promise<void> = Promise.resolve();
+
   return {
     send: (envelope) => {
       const post = async () => {
+        if (dead) return;
         const response = await fetch(`${httpUrl}/porter/commands`, {
           method: 'POST',
           headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
@@ -106,7 +110,8 @@ export function openSse(httpUrl: string, token: string, on: LinkEvents): Link {
         const { reason } = (await response.json()) as { reason: Exclude<CommandRejectReason, 'notConnected'> };
         down(reason);
       };
-      post().catch(() => down());
+      // One at a time: two requests in flight reach the server in either order.
+      before = before.then(post).catch(() => down());
     },
     close: () => {
       dead = true;
