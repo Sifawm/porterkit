@@ -25,7 +25,7 @@ test('a timer is announced, fires once and is announced cleared before its callb
 
 test('a callback may set a timer of the same name', async () => {
   const { ana, timers } = await started();
-  timers.set('tick', 100, () => timers.set('tick', 100, () => {}));
+  timers.set('again', 100, () => timers.set('again', 100, () => {}));
   vi.advanceTimersByTime(100);
   expect(ana.sink.events()).toEqual(['porter:timerSet', 'porter:timerCleared', 'porter:timerSet']);
 });

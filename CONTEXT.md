@@ -45,7 +45,7 @@ What runs inside a room, supplied by the Integrator. Porter knows a Game's shape
 _Avoid_: Activity, app, plugin
 
 **Game definition**:
-The part of a Game that server and client share: its name, its minimum number of players, and what its settings, state and per-User data look like when new. It contains no rules.
+The part of a Game that server and client share: its name, its minimum number of players, the rate of its Ticks when it has them, and what its settings, state and per-User data look like when new. It contains no rules.
 _Avoid_: Game config, registration, model
 
 **Match**:
@@ -55,6 +55,10 @@ _Avoid_: Game (for a single run), round, session
 **Match timer**:
 A named countdown that belongs to a Match. It stops while the Match is paused and ceases to exist when the Match ends.
 _Avoid_: Timeout, scheduler, round timer
+
+**Tick**:
+One advance of a Match by a fixed length of time, which Porter asks of the Manager at the rate the Game definition declares. Ticks happen exactly while the Match is running.
+_Avoid_: Frame, step, update, loop
 
 **Manager**:
 The Integrator's server-side class for a Game: its rules, default settings and message handlers. One exists for the whole application; it keeps nothing about any room.

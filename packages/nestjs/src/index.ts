@@ -9,6 +9,7 @@ export type {
   OnEnd,
   OnPause,
   OnStart,
+  OnTick,
   OnUserDisconnected,
   OnUserLeft,
   PorterModuleOptions,

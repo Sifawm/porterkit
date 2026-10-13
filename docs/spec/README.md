@@ -25,6 +25,7 @@ An Integrator that has several Games running on room code of its own can rebuild
 - **Five packages.** `@porterkit/contracts`, types only and safe for a browser; `@porterkit/nestjs`, the server; `@porterkit/client`, the client; `@porterkit/react` and `@porterkit/godot`, its Bindings for React and for Godot.
 - **Porter knows Games.** A room always has an active Game, and Porter knows its shape as a contract: settings, state, per-User data and messages. It never knows its rules ([ADR 0002](../adr/0002-porter-knows-games.md)).
 - **Two transports.** WebSocket and SSE, over one connection lifecycle ([ADR 0001](../adr/0001-two-transports.md)).
+- **Real time is a Tick.** A Game that runs in real time is advanced by the server at a fixed rate and travels over the same connection as any other ([ADR 0009](../adr/0009-real-time-is-a-tick-over-websocket.md)).
 - **Guest identity.** A User is a name, unique in its room, and a Profile. Its Token is tied to that room ([ADR 0004](../adr/0004-opaque-room-token.md)).
 - **A complete client.** Login, connection and state, with no framework; React hooks over them, and signals for a Game made in Godot and exported for the web.
 - **Rooms in memory**, in one process.

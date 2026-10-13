@@ -138,6 +138,10 @@ export interface OnPause<Ctx extends AnyContext, Reason = unknown> {
 export interface OnContinue<Ctx extends AnyContext> {
   onContinue(ctx: Ctx): void;
 }
+/** Only for a Game whose definition has a `tickRate`. */
+export interface OnTick<Ctx extends AnyContext> {
+  onTick(ctx: Ctx): void;
+}
 export interface OnEnd<Ctx extends AnyContext> {
   onEnd(ctx: Ctx, reason: EndReason<Parameters<Ctx['endMatch']>[0]>): void;
 }
@@ -184,7 +188,7 @@ export declare function AnyTime(): MethodDecorator;
 
 - There is one module, `PorterModule`. It exports no provider: an Integrator's modules inject nothing of Porter's and do not import it.
 - `forRoot` and `forRootAsync` take the same options. The options are global: none is per room or per Game.
-- Porter checks its configuration once, in `onApplicationBootstrap`, in the same place for `forRoot` and `forRootAsync`. When a check fails the application does not start. The checks run in this order: the options, then duplicate Managers (see "Registering a Game"), then `initialGame`.
+- Porter checks its configuration once, in `onApplicationBootstrap`, in the same place for `forRoot` and `forRootAsync`. When a check fails the application does not start. The checks run in this order: the options, then duplicate Managers and each Game's Ticks (see "Registering a Game"), then `initialGame`.
 - **Options.** An option that is `undefined` is not given and takes its default. Any other value must be valid, `null` included; Porter does not correct it, clamp it or fall back to the default. The error names the option and the value received.
 
   | Option | Valid |
@@ -298,6 +302,7 @@ What each party receives is in [protocol.md](protocol.md#removing-a-user).
 - A Game is registered by putting `@GameManager(definition)` on its Manager and listing that class in the `providers` of any module of the application. Porter finds it with `DiscoveryService`.
 - A Manager is a NestJS singleton, one per Game for the whole application, with ordinary constructor injection.
 - Two Managers for the same Game stop the application from starting, with an error that names the Game and both classes. The same Game means the same `name` in the Game definition, even when the two definitions are different objects.
+- A Game definition with a `tickRate` and a Manager with `onTick` go together. A `tickRate` whose Manager has no `onTick`, an `onTick` whose definition has no `tickRate`, and a `tickRate` that is not a number greater than zero and at most 1000 each stop the application from starting, with an error that names the Game.
 - A class that carries `@GameManager` and is in the `providers` of no module is invisible to Porter. Nothing is promised about it.
 - A Manager keeps nothing about any room. Everything of a room reaches it through the context.
 - The methods of a Manager do not run inside NestJS's execution context. `@UseGuards`, `@UsePipes`, `@UseInterceptors` and `@UseFilters` have no effect on them, and there are no DTOs with `ValidationPipe`. The guard of `On` and `@AdminOnly()` take their place.
@@ -338,19 +343,19 @@ A client message whose event is not one of Porter's goes to the active Game's Ma
 
 - Porter does not queue the messages of a room. It delivers each one as it arrives and does not wait for an `async` handler to finish: the next message of that room may be delivered while the first is awaiting.
 - Whatever runs without an `await` in between is atomic. Porter's own checks, and a handler up to its first `await`, never interleave with anything. The messages of one connection start being processed in the order they arrived.
-- The same holds for what is not a message: while a handler awaits, a Match timer may fire, a User may drop or leave the room, a Grace period may run out and the Match may end.
+- The same holds for what is not a message: while a handler awaits, a Match timer may fire, a Tick may come, a User may drop or leave the room, a Grace period may run out and the Match may end.
 - After an `await` a Manager reads again from the context and trusts nothing it read before.
 - Porter itself awaits in two places only, both `defaultSettings()`: when a room is created, before the room exists, and in `porter:changeGame` (see "Changing the Game").
 
 ### Exceptions in hooks
 
-The hooks are `onStart`, `onPause`, `onContinue`, `onEnd`, `onUserDisconnected` and `onUserLeft`. Each is called after the situation has changed and has been announced.
+The hooks are `onStart`, `onPause`, `onContinue`, `onEnd`, `onUserDisconnected`, `onUserLeft` and `onTick`. Each but `onTick` is called after the situation has changed and has been announced; `onTick` follows no announcement (see "Ticks").
 
 - When a hook throws, or the promise of `onStart` rejects, Porter catches it where it calls the hook and logs it. Nothing else happens: nobody gets `failed`, the situation is not undone and the Match goes on. The announcement was the confirmation of the request.
 - The exception does not reach whoever caused the hook. When a handler calls `ctx.endMatch` and `onEnd` throws, `ctx.endMatch` returns normally, the handler goes on and the Match is `ended`.
 - An `onStart` that throws leaves a Match `running` without its opening. The Admin gets out of it with `porter:endMatch`. Porter does not end the Match and has no `EndReason` for an error.
 - `canStart` and `updateSettings` are not hooks in this sense: they run before any announcement, and what they throw answers the sender.
-- **Synchronous methods.** `updateSettings`, `canStart`, `onPause`, `onContinue`, `onEnd`, `onUserDisconnected` and `onUserLeft` are synchronous and Porter does not await them. TypeScript accepts an `async` method in their place, so Porter attaches a `catch` to any promise one of them returns: the rejection is logged like any other exception and the process never dies of an unhandled rejection from a Manager.
+- **Synchronous methods.** `updateSettings`, `canStart`, `onPause`, `onContinue`, `onEnd`, `onUserDisconnected`, `onUserLeft` and `onTick` are synchronous and Porter does not await them. TypeScript accepts an `async` method in their place, so Porter attaches a `catch` to any promise one of them returns: the rejection is logged like any other exception and the process never dies of an unhandled rejection from a Manager.
 - In `canStart` and `updateSettings`, whatever happens after the first `await` comes too late: it neither vetoes the start nor prevents the announcement. A `canStart` that needs something asynchronous gets it beforehand, through an `@AnyTime()` Game message that leaves the result in the state.
 
 ### Settings
@@ -372,7 +377,7 @@ The hooks are `onStart`, `onPause`, `onContinue`, `onEnd`, `onUserDisconnected` 
 
 ### Match
 
-Porter owns the Match: whether there is one, whether it is paused, and its timers. A Manager never writes code to reset a Match.
+Porter owns the Match: whether there is one, whether it is paused, its timers and its Ticks. A Manager never writes code to reset a Match.
 
 **Starting.** On `porter:startMatch` Porter, in this order:
 
@@ -425,11 +430,25 @@ All hooks are optional.
 - When the room ceases to exist its timers are cancelled with it.
 - After an `await`, the Match may be over. A `set` there throws: in a handler the sender gets `failed`, anywhere else it is only logged.
 
+### Ticks
+
+A Game whose definition has a `tickRate` has Ticks: Porter calls `onTick(ctx)` that many times a second while a Match of it is `running`. A Game without a `tickRate` has none, and nothing here applies to it.
+
+- A Tick is one advance of a fixed length, `1 / tickRate` seconds. `onTick` receives the context and nothing else: no elapsed time and no number. A Game that counts its Ticks keeps the count in its Match memory.
+- Ticks start when the Match starts, and the first comes one length after `porter:matchStarted`. `onStart` has been called by then, though an `async` one may still be awaiting. They stop while the Match is `paused` and when it ends; `onTick` is never called with the Match `paused` or over.
+- **Late Ticks.** Ticks follow the clock. When Porter comes to a Tick late, because the process was busy, it calls `onTick` once for each length gone by since the one before, one after another with nothing in between, up to 5 times. When more than 5 are owed the rest are dropped: the Match falls behind the clock by that much and does not catch up.
+- **Pause.** The time a Match spends `paused` owes no Ticks. On `porter:continueMatch` the first Tick comes one length later.
+- `onTick` is synchronous, so a Tick is atomic: no message, timer or other Tick runs in the middle of one (see "Order within a room").
+- Porter announces nothing for a Tick. What Users see of it is what the Manager sends from it.
+- `onTick` may call `ctx.endMatch`. No Tick follows it, also when Porter was making up for late ones.
+- An `onTick` that throws is logged like any hook and the Ticks go on. A Manager whose `onTick` always throws logs `tickRate` lines a second until the Admin ends the Match.
+- When the room ceases to exist its Ticks go with it.
+
 ### Logging
 
 - Porter logs with the `Logger` of `@nestjs/common` under the fixed context `Porter`, and never with `console`. There is no logging option: the Integrator replaces the logger the NestJS way.
 - It logs at `error` level only, and only two things:
-  - an exception from the Integrator's code: a hook, a handler, `canStart`, `updateSettings`, `defaultSettings` or a Match timer callback that throws or whose promise rejects, other than a `ctx.reject`. The line carries the room, when there is one, the Game, the name of the method, message or timer, and the stack;
+  - an exception from the Integrator's code: a hook, `onTick` included, a handler, `canStart`, `updateSettings`, `defaultSettings` or a Match timer callback that throws or whose promise rejects, other than a `ctx.reject`. The line carries the room, when there is one, the Game, the name of the method, message or timer, and the stack;
   - an unexpected error of Porter's own.
 - It does not log the normal flow (logins, connections, Users leaving, Admin changes, Matches) or messages answered with `porter:messageRejected` for any reason but `failed`.
 - A line never carries a Token, a Profile or the data of a message; only the room id, the Game's name, the User's name and the event name.
@@ -561,6 +580,31 @@ export class MisfitManager
   }
 }
 ```
+
+A Game with Ticks. Its definition has `tickRate: 20`, and the Manager advances its rules by one fixed length in each `onTick`.
+
+```ts
+@GameManager(chase)
+export class ChaseManager implements Manager<Ctx>, OnTick<Ctx> {
+  // …
+
+  onTick(ctx: Ctx) {
+    const { room, game } = ctx;
+    for (const fact of advance(game.state)) room.broadcast(fact.event, fact.data);
+    room.broadcast('moved', positionsOf(game.state));
+  }
+
+  @On('steer', isDirection)
+  steer(_ctx: Ctx, { direction }: { direction: Direction }, user: ChaseUser) {
+    user.data.direction = direction;
+  }
+}
+```
+
+- **What a Tick sends.** Two kinds of message. What happened, a wall broken or a User caught, is a message with an Applier on the client, so the client's state follows. Where everything is now, sent every Tick, is a message with no Applier: it reaches the listener that draws and never goes through the client's state ([client.md](client.md#receiving)).
+- **The state stays current on the server.** `onTick` writes every change into `game.state` and each `user.data`, positions included. A User that connects or comes back gets them in `porter:joined`; the messages it missed are not replayed.
+- **A message is not a Tick.** A handler records what the User asked for and `onTick` acts on it, so the rules advance in one place.
+- **Transport.** A client of a Game with Ticks connects over WebSocket. Over SSE every client message is an HTTP request of its own, sent once the one before has been answered, and a User feels the delay ([protocol.md](protocol.md#transports)). Porter does not enforce it: the transport is the client's option.
 
 Registering it. The Game's module does not import `PorterModule`.
 

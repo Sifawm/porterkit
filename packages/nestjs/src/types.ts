@@ -100,6 +100,10 @@ export interface OnPause<Ctx extends AnyContext, Reason = unknown> {
 export interface OnContinue<Ctx extends AnyContext> {
   onContinue(ctx: Ctx): void;
 }
+/** Only for a Game whose definition has a `tickRate`. */
+export interface OnTick<Ctx extends AnyContext> {
+  onTick(ctx: Ctx): void;
+}
 export interface OnEnd<Ctx extends AnyContext> {
   onEnd(ctx: Ctx, reason: EndReason<Parameters<Ctx['endMatch']>[0]>): void;
 }

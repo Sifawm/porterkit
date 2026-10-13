@@ -22,6 +22,8 @@ export type GameName<Games extends GamesMap> = keyof Games & string;
 export interface GameDefinition<Games extends GamesMap, Name extends GameName<Games>> {
   name: Name;
   minPlayers: number;
+  /** Ticks per second. A Game without it has no Tick. */
+  tickRate?: number;
   createSettings(): Games[Name]['settings'] & { set(data: Games[Name]['settings']): void };
   createState(): Games[Name]['state'];
   createUserData(): Games[Name]['userData'];

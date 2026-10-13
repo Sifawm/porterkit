@@ -9,16 +9,27 @@ interface Timer {
   callback: () => unknown;
 }
 
+/** The Ticks one firing may run. What is owed beyond them is dropped. */
+const MAX_TICKS_PER_FIRING = 5;
+
 /**
- * The Match of a Game in a room: whether there is one, whether it is paused, and its Match timers.
- * The timers run exactly while the Match is `running`. What is announced and which hook follows is Porter's.
+ * The Match of a Game in a room: whether there is one, whether it is paused, its Match timers and its Ticks.
+ * Timers and Ticks run exactly while the Match is `running`. What is announced and which hook follows is Porter's.
  */
 export class Match {
   private current: MatchStatus = { status: 'idle' };
   private readonly timers = new Map<string, Timer>();
+  /** The interval of the Ticks, while they run. */
+  private ticking?: NodeJS.Timeout;
 
-  /** `fired` is called when a Match timer runs out, once the timer has ceased to exist. */
-  constructor(private readonly fired: (name: string, callback: () => unknown) => void) {}
+  /**
+   * `fired` is called when a Match timer runs out, once the timer has ceased to exist.
+   * `tick`, of a Game that has Ticks, is called once for each, `every` milliseconds apart.
+   */
+  constructor(
+    private readonly fired: (name: string, callback: () => unknown) => void,
+    private readonly tick?: { every: number; run: () => void },
+  ) {}
 
   get underWay(): boolean {
     return this.current.status === 'running' || this.current.status === 'paused';
@@ -28,6 +39,7 @@ export class Match {
   start(): boolean {
     if (this.underWay) return false;
     this.current = { status: 'running' };
+    this.startTicking();
     return true;
   }
 
@@ -37,6 +49,7 @@ export class Match {
       clearTimeout(timer.handle);
       timer.remaining = Math.max(0, timer.endsAt - Date.now());
     }
+    this.stopTicking();
     this.current = { status: 'paused', reason };
     return true;
   }
@@ -45,12 +58,13 @@ export class Match {
     if (this.current.status !== 'paused') return false;
     this.current = { status: 'running' };
     for (const [name, timer] of this.timers) this.run(name, timer);
+    this.startTicking();
     return true;
   }
 
   end(reason: EndReason): boolean {
     if (!this.underWay) return false;
-    this.cancelTimers();
+    this.cancel();
     this.current = { status: 'ended', reason };
     return true;
   }
@@ -72,9 +86,10 @@ export class Match {
   }
 
   /** The room ceases to exist, or the Match ends. */
-  cancelTimers(): void {
+  cancel(): void {
     for (const timer of this.timers.values()) clearTimeout(timer.handle);
     this.timers.clear();
+    this.stopTicking();
   }
 
   /** The Match as `porter:joined` carries it, with what each timer has left. */
@@ -84,6 +99,26 @@ export class Match {
     const left = (timer: Timer) =>
       current.status === 'running' ? Math.max(0, timer.endsAt - Date.now()) : timer.remaining;
     return { ...current, timers: Object.fromEntries([...this.timers].map(([name, timer]) => [name, left(timer)])) };
+  }
+
+  /** Follows the clock: a firing that comes late runs the Ticks owed since the one before. */
+  private startTicking() {
+    if (!this.tick) return;
+    const { every, run } = this.tick;
+    let last = Date.now();
+    const handle = setInterval(() => {
+      const owed = Math.floor((Date.now() - last) / every);
+      const due = Math.min(owed, MAX_TICKS_PER_FIRING);
+      last = due < owed ? Date.now() : last + owed * every;
+      // A Tick may end the Match.
+      for (let i = 0; i < due && this.ticking === handle; i++) run();
+    }, every);
+    this.ticking = handle;
+  }
+
+  private stopTicking() {
+    clearInterval(this.ticking);
+    this.ticking = undefined;
   }
 
   private run(name: string, timer: Timer) {

@@ -67,7 +67,7 @@ export declare function createHooks<Games extends GamesMap, Profile>(
 ### Match timers
 
 - `useTimer(name)` returns `null` when the active Match has no timer of that name.
-- The tick is the component's: it calls `remaining()` on its own interval. A countdown does not go through the store and re-renders only its own component.
+- The refresh is the component's: it calls `remaining()` on its own interval. A countdown does not go through the store and re-renders only its own component.
 
 ### What stays with the Integrator
 

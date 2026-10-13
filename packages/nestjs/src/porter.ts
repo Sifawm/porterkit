@@ -85,6 +85,8 @@ const DEFAULTS = { capacity: 16, maxNameLength: 20, maxProfileSize: 2048, pingIn
 
 const integerFrom = (min: number) => (value: unknown) => Number.isInteger(value) && (value as number) >= min;
 const positive = (value: unknown) => typeof value === 'number' && Number.isFinite(value) && value > 0;
+/** A timer fires once a millisecond at most. */
+const MAX_TICK_RATE = 1000;
 const VALID: Record<string, (value: unknown) => boolean> = {
   capacity: integerFrom(1),
   maxNameLength: integerFrom(1),
@@ -151,6 +153,19 @@ export class Porter {
       if (first) {
         throw new Error(
           `Porter: the Game "${definition.name}" has two Managers: ${first.manager.constructor.name} and ${manager.constructor.name}`,
+        );
+      }
+      const { tickRate } = definition;
+      if (tickRate !== undefined && !(positive(tickRate) && tickRate <= MAX_TICK_RATE)) {
+        throw new Error(`Porter: the Game "${definition.name}" has a tickRate that is not valid: ${inspect(tickRate)}`);
+      }
+      const hasOnTick = typeof (manager as { onTick?: unknown }).onTick === 'function';
+      if (tickRate !== undefined && !hasOnTick) {
+        throw new Error(`Porter: the Game "${definition.name}" has a tickRate and its Manager has no onTick`);
+      }
+      if (tickRate === undefined && hasOnTick) {
+        throw new Error(
+          `Porter: the Manager of the Game "${definition.name}" has onTick and its definition no tickRate`,
         );
       }
       this.games.set(definition.name, { definition, manager, handlers: handlersIn(manager) });
@@ -353,7 +368,7 @@ export class Porter {
   }
 
   private destroyRoom(room: RoomRec) {
-    room.game.match.cancelTimers();
+    room.game.match.cancel();
     this.rooms.delete(room.id);
   }
 
@@ -480,15 +495,19 @@ export class Porter {
   private createGame(room: RoomRec, entry: Registered, settingsData: unknown): Game {
     const settings = entry.definition.createSettings();
     settings.set(settingsData);
+    const { tickRate } = entry.definition;
     const game: Game = {
       entry,
       settings,
       state: {},
       memory: undefined,
-      match: new Match((name, callback) => {
-        this.broadcast(room, 'porter:timerCleared', { name });
-        this.contain(room, entry, `timer=${name}`, callback);
-      }),
+      match: new Match(
+        (name, callback) => {
+          this.broadcast(room, 'porter:timerCleared', { name });
+          this.contain(room, entry, `timer=${name}`, callback);
+        },
+        tickRate === undefined ? undefined : { every: 1000 / tickRate, run: () => this.hook(room, 'onTick') },
+      ),
       ctx: undefined!,
     };
     game.ctx = this.context(room, game);

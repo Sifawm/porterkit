@@ -181,8 +181,7 @@ export class FakeSink implements Sink {
   }
 }
 
-export function setup(options: Partial<PorterModuleOptions<Games>> = {}) {
-  const manager = new CounterManager();
+export function setup(options: Partial<PorterModuleOptions<Games>> = {}, manager = new CounterManager()) {
   const otherManager = new OtherManager();
   const porter = new Porter({ initialGame: 'counter', ...options }, [manager, otherManager]);
 

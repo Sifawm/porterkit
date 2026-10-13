@@ -360,7 +360,7 @@ What the client does with each of Porter's messages:
 
 - `timer(name)` returns `null` when the active Match has no timer of that name.
 - `remaining()` returns the milliseconds left at the moment of the call, never below zero, worked out from the client's clock and the remaining time received ([protocol.md](protocol.md#match-timers)). While the Match is `paused` it returns the same value on every call and `paused` is `true`.
-- The tick is the caller's: it calls `remaining()` on its own interval. A countdown does not go through the store and notifies nobody.
+- The refresh is the caller's: it calls `remaining()` on its own interval. A countdown does not go through the store and notifies nobody.
 - Timer names are plain strings, not typed from the games map.
 
 ### What stays with the Integrator

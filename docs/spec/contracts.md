@@ -43,6 +43,8 @@ export type GameName<Games extends GamesMap> = keyof Games & string;
 export interface GameDefinition<Games extends GamesMap, Name extends GameName<Games>> {
   name: Name;
   minPlayers: number;
+  /** Ticks per second. A Game without it has no Tick. */
+  tickRate?: number;
   createSettings(): Games[Name]['settings'] & { set(data: Games[Name]['settings']): void };
   createState(): Games[Name]['state'];
   createUserData(): Games[Name]['userData'];
@@ -229,6 +231,7 @@ export type ServerMessage<Games extends GamesMap, Profile> =
 
 - It is the part of a Game both sides import. It runs in a browser and imports nothing from the server.
 - `name` is the Game's key in the games map. `minPlayers` is the fewest Users a Match may have.
+- `tickRate` is how many Ticks a second a Match of the Game has, and is absent in a Game without Ticks. It is a number greater than zero and at most 1000, and need not be an integer. The server advances the Match at that rate ([nestjs.md](nestjs.md#ticks)); a client reads it from the same definition and is sent nothing about it.
 - The three factories take no arguments and return a new value on every call. The value may be an instance of a class or an object literal.
 - `createSettings()` returns the settings plus `set(data)`, which replaces them with `data`. It is the only method Porter asks of a Game's data.
 
