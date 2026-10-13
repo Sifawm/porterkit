@@ -14,6 +14,7 @@ import type {
   RejectReason,
   UserStatus,
 } from '@porterkit/contracts';
+import { AdminLine } from './admin-line';
 import { definitionOf, type Handler, handlersIn } from './decorators';
 import { Match } from './match';
 import {
@@ -72,9 +73,8 @@ interface RoomRec {
   id: string;
   /** In the order they joined, `pending` ones included. */
   users: UserRec[];
-  admin: UserRec;
-  /** The Users that have been Admin, in order. The Admin is the last. */
-  line: UserRec[];
+  /** Who is the Admin, and who has been. */
+  line: AdminLine<UserRec>;
   locked: boolean;
   game: Game;
 }
@@ -212,7 +212,7 @@ export class Porter {
         let id: string;
         do id = Array.from({ length: 10 }, () => ALPHABET[randomInt(ALPHABET.length)]).join('');
         while (this.rooms.has(id));
-        room = { id, users: [], admin: user, line: [user], locked: false, game: undefined! };
+        room = { id, users: [], line: new AdminLine(user), locked: false, game: undefined! };
         room.game = this.createGame(room, entry, settings);
         this.rooms.set(id, room);
       } catch (error) {
@@ -273,9 +273,7 @@ export class Porter {
     }, this.options.pingInterval);
 
     // The Admin is settled first so `porter:joined` carries it, and announced after.
-    const earlier = room.line.indexOf(user) >= 0 && room.line.indexOf(user) < room.line.indexOf(room.admin);
-    const adminChanged =
-      before !== 'connected' && (earlier || room.admin.status !== 'connected') && this.setAdmin(room, user);
+    const adminChanged = before !== 'connected' && room.line.connected(user);
 
     this.send(user, 'porter:joined', this.joined(room, user));
     const others = room.users.filter((other) => other !== user);
@@ -286,7 +284,7 @@ export class Porter {
     if (before === 'reconnecting') {
       for (const other of others) this.send(other, 'porter:userReconnected', { name: user.name });
     }
-    if (adminChanged) this.broadcast(room, 'porter:adminChanged', { admin: user.name });
+    if (adminChanged) this.announceAdmin(room);
 
     return {
       receive: (raw) => {
@@ -327,7 +325,7 @@ export class Porter {
     return {
       roomId: room.id,
       you: user.name,
-      admin: room.admin.name,
+      admin: room.line.admin.name,
       locked: room.locked,
       pingInterval: this.options.pingInterval,
       users: users.map((u) => ({ name: u.name, profile: u.profile, status: u.status })),
@@ -356,10 +354,7 @@ export class Porter {
     user.status = 'reconnecting';
     this.startGrace(room, user);
     this.broadcast(room, 'porter:userDisconnected', { name: user.name });
-    if (room.admin === user) {
-      const next = room.users.find((u) => u.status === 'connected');
-      if (next && this.setAdmin(room, next)) this.broadcast(room, 'porter:adminChanged', { admin: next.name });
-    }
+    if (room.line.dropped(user, room.users)) this.announceAdmin(room);
     if (room.game.match.underWay) this.hook(room, 'onUserDisconnected', user.view);
   }
 
@@ -369,15 +364,8 @@ export class Porter {
     this.detach(user);
     clearTimeout(user.grace);
     room.users.splice(room.users.indexOf(user), 1);
-    room.line = room.line.filter((u) => u !== user);
     if (wasVisible) this.broadcast(room, 'porter:userLeft', { name: user.name, reason });
-    if (room.admin === user && room.users.length > 0) {
-      const next = (['connected', 'reconnecting', 'pending'] as const)
-        .map((status) => room.users.find((u) => u.status === status))
-        .find((u) => u !== undefined)!;
-      this.setAdmin(room, next);
-      this.broadcast(room, 'porter:adminChanged', { admin: next.name });
-    }
+    if (room.line.left(user, room.users)) this.announceAdmin(room);
     if (wasVisible && room.game.match.underWay) {
       if (room.users.filter(isVisible).length < room.game.entry.definition.minPlayers) {
         this.end(room, { by: 'minPlayers' });
@@ -394,13 +382,8 @@ export class Porter {
     this.rooms.delete(room.id);
   }
 
-  private setAdmin(room: RoomRec, user: UserRec): boolean {
-    if (room.admin === user) return false;
-    const at = room.line.indexOf(user);
-    if (at >= 0) room.line.length = at + 1;
-    else room.line.push(user);
-    room.admin = user;
-    return true;
+  private announceAdmin(room: RoomRec) {
+    this.broadcast(room, 'porter:adminChanged', { admin: room.line.admin.name });
   }
 
   private send<E extends keyof Events>(user: UserRec, event: E, ...data: Args<Events[E]>) {
@@ -452,7 +435,7 @@ export class Porter {
     if (!event.startsWith('porter:')) {
       const handler = game.entry.handlers.get(event);
       if (!handler) return reject('unhandled');
-      if (handler.adminOnly && room.admin !== user) return reject('notAdmin');
+      if (handler.adminOnly && room.line.admin !== user) return reject('notAdmin');
       try {
         if (handler.guard && !handler.guard(data)) return reject('malformed');
         if (!handler.anyTime && !game.match.underWay) return reject('notAllowedNow');
@@ -465,7 +448,7 @@ export class Porter {
     }
 
     if (!isCommand(event)) return reject('unhandled');
-    if (room.admin !== user) return reject('notAdmin');
+    if (room.line.admin !== user) return reject('notAdmin');
 
     switch (event) {
       case 'porter:lockRoom': {
@@ -575,7 +558,7 @@ export class Porter {
       room: {
         id: room.id,
         get admin() {
-          return room.admin.name;
+          return room.line.admin.name;
         },
         get users() {
           return room.users.filter(isVisible).map((u) => u.view);

@@ -24,6 +24,10 @@ _Avoid_: JWT, session, credential
 The one User in a room allowed to change the room and run its Matches. A room always has exactly one.
 _Avoid_: Host, owner, moderator
 
+**Admin line**:
+The Users of a room that have been its Admin, in the order they became it. A User that comes back takes the Admin again from whoever is behind it in the line.
+_Avoid_: Queue, history, hierarchy
+
 **Grace period**:
 The time a User may stay in a room without an open connection, either before connecting for the first time or after a connection drops. When it runs out the User leaves the room.
 _Avoid_: Timeout, keep-alive, reconnect window
