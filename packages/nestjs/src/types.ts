@@ -72,6 +72,10 @@ export interface GameContext<Games extends GamesMap, Definition extends AnyDefin
   /** `throw ctx.reject(reason)`. */
   reject(reason: Games[Definition['name']]['rejectReason']): GameRejection;
   endMatch(reason: Games[Definition['name']]['endReason']): void;
+  /** As the Admin's `porter:pauseMatch`. Does nothing unless the Match is `running`. */
+  pauseMatch(reason: Games[Definition['name']]['pauseReason']): void;
+  /** As the Admin's `porter:continueMatch`. Does nothing unless the Match is `paused`. */
+  continueMatch(): void;
 }
 
 export type AnyContext = GameContext<any, any, any>;

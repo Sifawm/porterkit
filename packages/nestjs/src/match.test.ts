@@ -102,6 +102,26 @@ test('ctx.endMatch without a Match under way does nothing', async () => {
   expect(manager.calls.filter((c) => c.startsWith('onEnd'))).toHaveLength(1);
 });
 
+test('the Manager pauses and continues the Match as the Admin does, and out of place it does nothing', async () => {
+  const { ana, bea, manager } = await started();
+  const ctx = manager.ctx!;
+  ctx.continueMatch(); // not paused
+  ctx.pauseMatch('break');
+  ctx.pauseMatch(null); // already paused: the first reason stays
+  expect(bea.sink.last('porter:matchPaused')).toEqual({ reason: 'break' });
+  expect(bea.joined().game.match).toEqual({ status: 'paused', reason: 'break', timers: {} });
+  ctx.continueMatch();
+  ctx.continueMatch();
+  expect(bea.joined().game.match).toEqual({ status: 'running', timers: {} });
+  expect(manager.calls.slice(-2)).toEqual(['onPause:"break"', 'onContinue']);
+  const announced = ana.sink.events().filter((event) => /matchPaused|matchContinued/.test(event));
+  expect(announced).toEqual(['porter:matchPaused', 'porter:matchContinued']);
+
+  ana.send('porter:endMatch');
+  ctx.pauseMatch('break'); // no Match under way
+  expect(ana.sink.events().at(-1)).toBe('porter:matchEnded');
+});
+
 test('a hook that throws is logged and changes nothing', async () => {
   const { join, manager } = setup();
   const ana = await join('Ana');

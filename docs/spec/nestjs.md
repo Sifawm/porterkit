@@ -110,6 +110,10 @@ export interface GameContext<
   /** `throw ctx.reject(reason)`. */
   reject(reason: Games[Definition['name']]['rejectReason']): GameRejection;
   endMatch(reason: Games[Definition['name']]['endReason']): void;
+  /** As the Admin's `porter:pauseMatch`. Does nothing unless the Match is `running`. */
+  pauseMatch(reason: Games[Definition['name']]['pauseReason']): void;
+  /** As the Admin's `porter:continueMatch`. Does nothing unless the Match is `paused`. */
+  continueMatch(): void;
 }
 
 type AnyContext = GameContext<any, any, any>;
@@ -390,6 +394,8 @@ Porter owns the Match: whether there is one, whether it is paused, its timers an
 7. calls `onStart(ctx)`. The Game sends its opening from there.
 
 **Pausing and continuing.** `porter:pauseMatch` sets the Match to `paused` with the reason given, stops every Match timer, announces `porter:matchPaused` and calls `onPause(ctx, reason)`. The message's `data` must be an object, or it is `malformed`; a missing `reason` is `null`. `porter:continueMatch` sets it to `running`, resumes the timers with the time each had left, announces `porter:matchContinued` and calls `onContinue(ctx)`. Porter does not read the reason and has no guard for it: `onPause` and the clients receive whatever the Admin's client sent.
+
+The Manager pauses and continues with `ctx.pauseMatch(reason)` and `ctx.continueMatch()`, which do what the Admin's two messages do, announcements and hooks included. It is how a Game lets a User who is not the Admin pause: a Game message of its own, with its own rule for who may send it, whose handler calls the context. Out of place each does nothing, like `ctx.endMatch`: `pauseMatch` unless the Match is `running`, `continueMatch` unless it is `paused`. Nothing is announced, no hook is called and nothing is thrown or logged.
 
 **Ending.** A Match ends in three ways, each with its `EndReason`:
 

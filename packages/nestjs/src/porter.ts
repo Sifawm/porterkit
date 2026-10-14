@@ -471,15 +471,12 @@ export class Porter {
       }
       case 'porter:pauseMatch': {
         if (!isObject(data)) return reject('malformed');
-        const reason = data.reason ?? null;
-        if (!game.match.pause(reason)) return reject('notAllowedNow');
-        this.broadcast(room, 'porter:matchPaused', { reason });
-        return this.hook(room, 'onPause', reason);
+        if (!this.pause(room, data.reason ?? null)) return reject('notAllowedNow');
+        return;
       }
       case 'porter:continueMatch': {
-        if (!game.match.continue()) return reject('notAllowedNow');
-        this.broadcast(room, 'porter:matchContinued');
-        return this.hook(room, 'onContinue');
+        if (!this.continue(room)) return reject('notAllowedNow');
+        return;
       }
       case 'porter:endMatch': {
         if (!this.end(room, { by: 'admin' })) return reject('notAllowedNow');
@@ -565,7 +562,29 @@ export class Porter {
       endMatch: (reason: unknown) => {
         if (active()) this.end(room, { by: 'game', reason });
       },
+      pauseMatch: (reason: unknown) => {
+        if (active()) this.pause(room, reason);
+      },
+      continueMatch: () => {
+        if (active()) this.continue(room);
+      },
     };
+  }
+
+  /** `false`, and nothing happens, unless the Match is `running`. */
+  private pause(room: RoomRec, reason: unknown): boolean {
+    if (!room.game.match.pause(reason)) return false;
+    this.broadcast(room, 'porter:matchPaused', { reason });
+    this.hook(room, 'onPause', reason);
+    return true;
+  }
+
+  /** `false`, and nothing happens, unless the Match is `paused`. */
+  private continue(room: RoomRec): boolean {
+    if (!room.game.match.continue()) return false;
+    this.broadcast(room, 'porter:matchContinued');
+    this.hook(room, 'onContinue');
+    return true;
   }
 
   /** `false`, and nothing happens, without a Match under way. */
