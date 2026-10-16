@@ -9,8 +9,13 @@ export interface PorterModuleOptions<Games extends GamesMap> {
   maxNameLength?: number;
   /** UTF-8 bytes of `JSON.stringify(profile)`. Default 2048. */
   maxProfileSize?: number;
-  /** Runs after the size check. `false` refuses the login with `invalidProfile`. */
-  validateProfile?: (profile: unknown) => boolean;
+  /**
+   * Runs after the size check, at login and on `porter:updateProfile`, with the Profiles of the room's other
+   * Users. `false` refuses the Profile with `invalidProfile`.
+   */
+  validateProfile?: (profile: unknown, others: unknown[]) => boolean;
+  /** At login, the Profile stored instead of one that is refused. It is checked in turn. */
+  fallbackProfile?: (others: unknown[]) => unknown;
   /** Milliseconds. Default 30000. */
   pingInterval?: number;
   /** Milliseconds. Default 20000. */

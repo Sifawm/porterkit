@@ -11,6 +11,7 @@ test.each([
   ['pingInterval', 0],
   ['gracePeriod', Infinity],
   ['validateProfile', 'yes'],
+  ['fallbackProfile', {}],
 ])('the option %s = %j stops Porter from starting, and the error names both', (option, value) => {
   expect(() => new Porter({ initialGame: 'counter', [option]: value }, [new CounterManager()])).toThrow(
     new RegExp(`${option}.*${String(value)}`),

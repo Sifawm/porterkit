@@ -136,6 +136,9 @@ test("each of Porter's messages leaves the state the protocol says", async () =>
   expect(porter.room).toMatchObject({ admin: 'Bea', isAdmin: false });
   socket.emit('porter:roomLocked', { locked: true });
   expect(porter.room!.locked).toBe(true);
+  socket.emit('porter:profileUpdated', { name: 'Ana', profile: { avatar: 'cat' } });
+  expect(porter.room!.users[0].profile).toEqual({ avatar: 'cat' });
+  expect(porter.room!.you.profile).toEqual({ avatar: 'cat' });
   socket.emit('porter:settingsUpdated', { target: 9 });
   expect(porter.game('counter').settings).toEqual({ target: 9 });
 

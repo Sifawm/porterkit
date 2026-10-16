@@ -94,11 +94,13 @@ const VALID: Record<string, (value: unknown) => boolean> = {
   pingInterval: positive,
   gracePeriod: positive,
   validateProfile: (value) => typeof value === 'function',
+  fallbackProfile: (value) => typeof value === 'function',
 };
 
 /** Porter's own events, with whatever a Game defines left open. */
 type Events = PorterEvents<GamesMap, unknown>;
 type Command = Exclude<keyof PorterCommands<GamesMap>, 'porter:pong'>;
+type Optional = 'validateProfile' | 'fallbackProfile';
 
 const COMMANDS = {
   'porter:lockRoom': true,
@@ -109,6 +111,7 @@ const COMMANDS = {
   'porter:pauseMatch': true,
   'porter:continueMatch': true,
   'porter:endMatch': true,
+  'porter:updateProfile': true,
 } satisfies Record<Command, true>;
 const isCommand = (event: string): event is Command => Object.hasOwn(COMMANDS, event);
 
@@ -130,8 +133,8 @@ const NO_CONNECTION: Connection = { receive() {}, closed() {} };
 /** The rooms and everything that happens in them. The transports and NestJS stay outside. */
 export class Porter {
   private readonly logger = new Logger('Porter');
-  private readonly options: Required<Omit<PorterModuleOptions<any>, 'validateProfile'>> &
-    Pick<PorterModuleOptions<any>, 'validateProfile'>;
+  private readonly options: Required<Omit<PorterModuleOptions<any>, Optional>> &
+    Pick<PorterModuleOptions<any>, Optional>;
   private readonly games = new Map<string, Registered>();
   private readonly rooms = new Map<string, RoomRec>();
 
@@ -184,20 +187,24 @@ export class Porter {
     const name = body.name.trim();
     if (name === '' || name.length > this.options.maxNameLength) return refuse(400, 'invalidName');
 
-    const profile = body.profile ?? null;
-    if (Buffer.byteLength(JSON.stringify(profile)) > this.options.maxProfileSize) return refuse(400, 'invalidProfile');
-    try {
-      if (this.options.validateProfile && this.options.validateProfile(profile) !== true) {
+    const joining =
+      typeof body.roomId === 'string' && ROOM_ID.test(body.roomId) ? this.rooms.get(body.roomId) : undefined;
+    const others = joining?.users.map((user) => user.profile) ?? [];
+    let profile: unknown = body.profile ?? null;
+    if (!this.acceptsProfile(profile, others)) {
+      const { fallbackProfile } = this.options;
+      try {
+        profile = fallbackProfile ? fallbackProfile(others) : undefined;
+      } catch (error) {
+        this.logError('fallbackProfile', error);
         return refuse(400, 'invalidProfile');
       }
-    } catch (error) {
-      this.logError('validateProfile', error);
-      return refuse(400, 'invalidProfile');
+      if (!fallbackProfile || !this.acceptsProfile(profile, others)) return refuse(400, 'invalidProfile');
     }
 
     let room: RoomRec | undefined;
     if (body.roomId !== undefined) {
-      room = typeof body.roomId === 'string' && ROOM_ID.test(body.roomId) ? this.rooms.get(body.roomId) : undefined;
+      room = joining;
       if (!room) return refuse(404, 'roomNotFound');
       if (room.locked) return refuse(409, 'roomLocked');
       if (room.users.length >= this.options.capacity) return refuse(409, 'roomFull');
@@ -252,6 +259,17 @@ export class Porter {
       graceOver: () => this.leave(home, user, 'timeout'),
     });
     return { status: 200, body: { token: `${room.id}.${secret.toString('base64url')}`, roomId: room.id } };
+  }
+
+  /** Whether a Profile fits in `maxProfileSize` and the validator, when given, accepts it next to the others. */
+  private acceptsProfile(profile: unknown, others: unknown[]): boolean {
+    if (Buffer.byteLength(JSON.stringify(profile)) > this.options.maxProfileSize) return false;
+    try {
+      return !this.options.validateProfile || this.options.validateProfile(profile, others) === true;
+    } catch (error) {
+      this.logError('validateProfile', error);
+      return false;
+    }
   }
 
   roomExists(id: string): boolean {
@@ -422,6 +440,14 @@ export class Porter {
     }
 
     if (!isCommand(event)) return reject('unhandled');
+    if (event === 'porter:updateProfile') {
+      if (!isObject(data)) return reject('malformed');
+      const profile = data.profile ?? null;
+      const others = room.users.filter((other) => other !== user).map((other) => other.profile);
+      if (!this.acceptsProfile(profile, others)) return reject('invalidProfile');
+      user.profile = profile;
+      return this.broadcast(room, 'porter:profileUpdated', { name: user.name, profile });
+    }
     if (room.line.admin !== user) return reject('notAdmin');
 
     switch (event) {

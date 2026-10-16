@@ -32,8 +32,13 @@ export interface PorterModuleOptions<Games extends GamesMap> {
   maxNameLength?: number;
   /** UTF-8 bytes of `JSON.stringify(profile)`. Default 2048. */
   maxProfileSize?: number;
-  /** Runs after the size check. `false` refuses the login with `invalidProfile`. */
-  validateProfile?: (profile: unknown) => boolean;
+  /**
+   * Runs after the size check, at login and on `porter:updateProfile`, with the Profiles of the room's other
+   * Users. `false` refuses the Profile with `invalidProfile`.
+   */
+  validateProfile?: (profile: unknown, others: unknown[]) => boolean;
+  /** At login, the Profile stored instead of one that is refused. It is checked in turn. */
+  fallbackProfile?: (others: unknown[]) => unknown;
   /** Milliseconds. Default 30000. */
   pingInterval?: number;
   /** Milliseconds. Default 20000. */
@@ -200,7 +205,7 @@ export declare function AnyTime(): MethodDecorator;
   | `capacity`, `maxNameLength` | an integer, at least 1 |
   | `maxProfileSize` | an integer, at least 4, so that the `null` of an absent Profile always fits |
   | `pingInterval`, `gracePeriod` | a finite number greater than zero; it need not be an integer |
-  | `validateProfile` | a function |
+  | `validateProfile`, `fallbackProfile` | a function |
 
   There are no maximums and no rule between options: a `gracePeriod` shorter than `pingInterval` is accepted.
 - **`initialGame`** is checked once every Manager has been discovered. If it names no registered Game, the application does not start. An application with no Manager at all fails this check; its error says that no Manager is registered, which is a different message from the one for a name that matches none.
@@ -227,7 +232,8 @@ The route, its body and its rejections are in [protocol.md](protocol.md#post-por
 - **Name.** Porter trims the whitespace at both ends. What remains is not empty and is at most `maxNameLength` long, measured in UTF-16 code units, the `length` of the string and what `maxlength` counts on an HTML input; otherwise `invalidName`. The name is stored and shown as written; Porter does not normalize it. Two names that differ only in case are the same name: "Ana" and "ana" do not share a room.
 - **Body.** A body that is not a JSON object is `invalidName`. The checks run in this order and the first to fail answers: name, Profile, room, lock, capacity, name taken. `failed` comes after them all and only on a login that creates a room (see "Rooms").
 - **Room.** Only an absent `roomId` creates a room. A `roomId` that is present and is not a string of the form above is `roomNotFound`, without looking for a room.
-- **Profile.** An absent `profile` is stored as `null`, so every User has a Profile on the wire. `validateProfile` receives that `null` like any other value; an Integrator whose Profile type does not admit `null` refuses it there. Porter stores it and sends it to every User without reading it. Its serialization, `JSON.stringify(profile)` encoded as UTF-8, is at most `maxProfileSize` bytes: Porter measures what it will store, not the body as it arrived. The `null` of an absent Profile is 4 bytes. The limit on the size of the request body is the Integrator's and applies before Porter sees anything. Then `validateProfile`, when given, returns `true`; otherwise `invalidProfile`. The validator's refusal carries no reason of its own.
+- **Profile.** An absent `profile` is stored as `null`, so every User has a Profile on the wire. `validateProfile` receives that `null` like any other value; an Integrator whose Profile type does not admit `null` refuses it there. Porter stores it and sends it to every User without reading it. Its serialization, `JSON.stringify(profile)` encoded as UTF-8, is at most `maxProfileSize` bytes: Porter measures what it will store, not the body as it arrived. The `null` of an absent Profile is 4 bytes. The limit on the size of the request body is the Integrator's and applies before Porter sees anything. Then `validateProfile`, when given, returns `true`; otherwise the Profile is refused. The validator receives the Profiles of the Users of the room the login names, in the order they joined and `pending` ones included, or none when it creates a room or names none. A Profile refused, by its size or by the validator, is replaced by what `fallbackProfile` returns for those same Profiles, which passes the same two checks; without `fallbackProfile`, or when it too is refused, the login is `invalidProfile`. The refusal carries no reason of its own. A validator or a fallback that throws refuses the Profile, and the error is logged.
+- **Changing the Profile.** `porter:updateProfile` runs the size check and `validateProfile` as above, with the Profiles of the room's other Users; it has no fallback. See [protocol.md](protocol.md#profile).
 - **Capacity.** A room holds at most `capacity` Users, counting `pending`, `connected` and `reconnecting`.
 - **Lock.** A locked room refuses new logins and nothing else. A `pending` User keeps its place and may connect; a `reconnecting` User may come back.
 - A User that logs in is `pending` and its Grace period starts.
@@ -289,7 +295,7 @@ interface Connection {
 
 ### Permissions
 
-- Every one of Porter's client messages except `porter:pong` is for the Admin only. From anyone else it gets `notAdmin`.
+- Every one of Porter's client messages except `porter:updateProfile` and `porter:pong` is for the Admin only. From anyone else it gets `notAdmin`.
 - A `porter:` event that is not one of Porter's gets `unhandled` from anyone and is never offered to a Manager.
 - The checks on any message run in the order of [protocol.md](protocol.md#rejected-messages): the sender before the `data`, the `data` before the situation.
 - A Game message is for the Admin only when its handler carries `@AdminOnly()`. Porter checks it and answers `notAdmin` without calling the Manager.
@@ -454,7 +460,7 @@ A Game whose definition has a `tickRate` has Ticks: Porter calls `onTick(ctx)` t
 
 - Porter logs with the `Logger` of `@nestjs/common` under the fixed context `Porter`, and never with `console`. There is no logging option: the Integrator replaces the logger the NestJS way.
 - It logs at `error` level only, and only two things:
-  - an exception from the Integrator's code: a hook, `onTick` included, a handler, `canStart`, `updateSettings`, `defaultSettings` or a Match timer callback that throws or whose promise rejects, other than a `ctx.reject`. The line carries the room, when there is one, the Game, the name of the method, message or timer, and the stack;
+  - an exception from the Integrator's code: a hook, `onTick` included, a handler, `canStart`, `updateSettings`, `defaultSettings`, `validateProfile`, `fallbackProfile` or a Match timer callback that throws or whose promise rejects, other than a `ctx.reject`. The line carries the room, when there is one, the Game, the name of the method, message or timer, and the stack;
   - an unexpected error of Porter's own.
 - It does not log the normal flow (logins, connections, Users leaving, Admin changes, Matches) or messages answered with `porter:messageRejected` for any reason but `failed`.
 - A line never carries a Token, a Profile or the data of a message; only the room id, the Game's name, the User's name and the event name.

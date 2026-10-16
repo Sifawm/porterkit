@@ -150,6 +150,10 @@ export function createStore(games: Record<string, ClientGame<any, any> | undefin
         return s.admin === message.data.admin ? s : { ...s, admin: message.data.admin };
       case 'porter:roomLocked':
         return s.locked === message.data.locked ? s : { ...s, locked: message.data.locked };
+      case 'porter:profileUpdated': {
+        const { name, profile } = message.data;
+        return { ...s, users: s.users.map((user) => (user.name === name ? { ...user, profile } : user)) };
+      }
       case 'porter:settingsUpdated':
         return { ...s, data: { ...s.data, settings: message.data } };
       case 'porter:gameChanged':

@@ -43,7 +43,7 @@ Rejection: body `{ reason }`. A client tells rejections apart by `reason`, not b
 | `reason` | Status | When |
 |---|---|---|
 | `invalidName` | 400 | `name` is not a string, is empty after trimming, or exceeds the maximum length |
-| `invalidProfile` | 400 | `profile` exceeds the maximum size or the Integrator's validator refuses it |
+| `invalidProfile` | 400 | `profile` exceeds the maximum size or the Integrator's validator refuses it, and so does the Integrator's fallback Profile when it has one |
 | `roomNotFound` | 404 | no room has that `roomId` |
 | `nameTaken` | 409 | a User in the room has that name, compared without regard to case |
 | `roomFull` | 409 | the room is at capacity |
@@ -170,7 +170,7 @@ Announcements go to every `connected` User, including the one who asked, and ser
 
 ### Client to server
 
-Every message in this table is for the Admin only, except `porter:pong`.
+Every message in this table is for the Admin only, except `porter:updateProfile` and `porter:pong`.
 
 | Event | Data | Announced as |
 |---|---|---|
@@ -182,6 +182,7 @@ Every message in this table is for the Admin only, except `porter:pong`.
 | `porter:pauseMatch` | `{ reason }`, the Game's pause reason | `porter:matchPaused` |
 | `porter:continueMatch` | — | `porter:matchContinued` |
 | `porter:endMatch` | — | `porter:matchEnded` |
+| `porter:updateProfile` | `{ profile }`, the sender's new Profile | `porter:profileUpdated` |
 | `porter:pong` | — | — |
 
 Any other event that starts with `porter:` is handled by nobody: it gets `unhandled` and never reaches a Game. Any other event is a Game message and is delivered to the active Game.
@@ -204,6 +205,7 @@ Room and presence:
 | `porter:userLeft` | `{ name, reason: 'timeout' \| 'kicked' }` | the others |
 | `porter:adminChanged` | `{ admin: string }` | everyone |
 | `porter:roomLocked` | `{ locked: boolean }` | everyone |
+| `porter:profileUpdated` | `{ name, profile }` | everyone |
 | `porter:ping` | — | each connection |
 
 Game and Match:
@@ -228,6 +230,11 @@ Any other event comes from the active Game.
 - A `reconnecting` User leaves at once and its Grace period is cancelled; the others receive `porter:userLeft` with `kicked`. It receives nothing, having no connection; if it comes back, its Token gets `porter:rejected` with `notInRoom`.
 - A `pending` User cannot be removed: its name gives `notFound`.
 - The Admin cannot remove itself: `notAllowedNow`.
+
+### Profile
+
+- A User changes only its own Profile, at any time, with or without a Match. The Profile replaces the one it had, whole.
+- An absent `profile` is `null`, as at login. The new Profile passes the same checks as at login, against the Profiles of the room's other Users, `pending` ones included; when it does not, the sender gets `invalidProfile` and nothing changes. There is no fallback Profile here.
 
 ### Settings
 
@@ -311,6 +318,7 @@ Whoever sends a message that Porter does not carry out receives, alone, `porter:
 | `'belowMinPlayers'` | `porter:startMatch` with fewer Users than the Game's minimum |
 | `'notFound'` | `porter:changeGame` names a Game that is not registered, or `porter:kickUser` names nobody that can be removed |
 | `'unhandled'` | nobody handles that event: a Game message the active Game has no handler for, or a `porter:` event that is not one of Porter's |
+| `'invalidProfile'` | `porter:updateProfile` with a Profile over the maximum size or that the Integrator's validator refuses |
 | `'failed'` | the Game's code threw while attending the message: its handler, its settings update, its start veto, or its default settings on a `porter:changeGame`; no detail is given |
 | `{ code: 'game', reason }` | the Game rejected it, with one of its own reject reasons |
 
@@ -335,7 +343,7 @@ A message that deserves several rejections gets one, the first of this order. It
 | 5 | the situation allows it | `notAllowedNow` |
 | 6 | what it names exists | `notFound` |
 | 7 | there are enough Users | `belowMinPlayers` |
-| 8 | the Game accepts it | `{ code: 'game' }` or `failed` |
+| 8 | the Game accepts it; for `porter:updateProfile`, the Profile is accepted | `{ code: 'game' }` or `failed`; `invalidProfile` |
 
 So a User that is not the Admin learns nothing from a message for the Admin only: it gets `notAdmin` whatever its `data` and whatever the situation, and a Game's guard does not run for it.
 

@@ -103,6 +103,7 @@ export type RejectReason<Games extends GamesMap> =
   | 'belowMinPlayers'
   | 'notFound'
   | 'unhandled'
+  | 'invalidProfile'
   | 'failed'
   | { code: 'game'; reason: Games[GameName<Games>]['rejectReason'] };
 
@@ -131,7 +132,7 @@ export interface Envelope {
 }
 
 /** Client → server, Porter's own: event name → data. */
-export type PorterCommands<Games extends GamesMap> = {
+export type PorterCommands<Games extends GamesMap, Profile = unknown> = {
   'porter:lockRoom': { locked: boolean };
   'porter:kickUser': { name: string };
   'porter:changeGame': { game: GameName<Games> };
@@ -140,6 +141,8 @@ export type PorterCommands<Games extends GamesMap> = {
   'porter:pauseMatch': { reason: Games[GameName<Games>]['pauseReason'] };
   'porter:continueMatch': undefined;
   'porter:endMatch': undefined;
+  /** Any User, for its own Profile. */
+  'porter:updateProfile': { profile: Profile };
   'porter:pong': undefined;
 };
 
@@ -155,6 +158,7 @@ export type PorterEvents<Games extends GamesMap, Profile> = {
   'porter:userLeft': { name: string; reason: UserLeftReason };
   'porter:adminChanged': { admin: string };
   'porter:roomLocked': { locked: boolean };
+  'porter:profileUpdated': { name: string; profile: Profile };
   'porter:ping': undefined;
   'porter:gameChanged': {
     [Name in GameName<Games>]: { game: Name; settings: Games[Name]['settings'] };
@@ -175,8 +179,8 @@ type Envelopes<Events> = {
 }[keyof Events & string];
 
 /** Every envelope a client may send: Porter's commands and each Game's `client` events. */
-export type ClientMessage<Games extends GamesMap> =
-  | Envelopes<PorterCommands<Games>>
+export type ClientMessage<Games extends GamesMap, Profile = unknown> =
+  | Envelopes<PorterCommands<Games, Profile>>
   | { [Name in GameName<Games>]: Envelopes<Games[Name]['client']> }[GameName<Games>];
 
 /** Every envelope a server may send: Porter's events and each Game's `server` events. */

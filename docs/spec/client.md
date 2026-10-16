@@ -133,7 +133,7 @@ type Intersect<Union> = (Union extends unknown ? (member: Union) => void : never
 type Args<Data> = [Data] extends [undefined] ? [] : [data: Data];
 
 /** What a client sends: Porter's commands, without the pong, and every Game's `client` events. */
-export type Outgoing<Games extends GamesMap> = Omit<PorterCommands<Games>, 'porter:pong'> &
+export type Outgoing<Games extends GamesMap, Profile = unknown> = Omit<PorterCommands<Games, Profile>, 'porter:pong'> &
   Intersect<Games[GameName<Games>]['client']>;
 
 /** What a client listens to: Porter's events, without the ping, and every Game's `server` events. */
@@ -327,6 +327,7 @@ What the client does with each of Porter's messages:
 | `porter:userLeft` | the User is removed from `users`, and its per-User data with it, whatever the Match's situation |
 | `porter:adminChanged` | `admin`, each time it arrives; the Admin is not assumed stable |
 | `porter:roomLocked` | `locked` |
+| `porter:profileUpdated` | that User's `profile` |
 | `porter:settingsUpdated` | the settings are replaced by the message |
 | `porter:gameChanged` | the active Game is the one named; settings from the message; state and per-User data new from that Game's definition; Match `idle`; no timers |
 | `porter:matchStarted` | state and per-User data new from the Game definition; settings kept; Match `running`; no timers |

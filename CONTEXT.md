@@ -17,7 +17,7 @@ A named participant in exactly one room. A User has no existence outside its roo
 _Avoid_: Player, account, member
 
 **Profile**:
-Data the Integrator attaches to a User when it joins. Porter stores and shares it without interpreting it.
+Data the Integrator attaches to a User. The User brings it when it joins and may change it while it is in the room; Porter stores and shares it without interpreting it.
 _Avoid_: Seed, avatar, metadata
 
 **Token**:

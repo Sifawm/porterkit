@@ -96,7 +96,7 @@ type Intersect<Union> = (Union extends unknown ? (member: Union) => void : never
 type Args<Data> = [Data] extends [undefined] ? [] : [data: Data];
 
 /** What a client sends: Porter's commands, without the pong, and every Game's `client` events. */
-export type Outgoing<Games extends GamesMap> = Omit<PorterCommands<Games>, 'porter:pong'> &
+export type Outgoing<Games extends GamesMap, Profile = unknown> = Omit<PorterCommands<Games, Profile>, 'porter:pong'> &
   Intersect<Games[GameName<Games>]['client']>;
 
 /** What a client listens to: Porter's events, without the ping, and every Game's `server` events. */
@@ -146,7 +146,10 @@ export interface Porter<Games extends GamesMap, Profile> {
   roomExists(roomId: string): Promise<boolean>;
 
   /** Returns `false`, and sends nothing, unless `connected`. */
-  send<E extends keyof Outgoing<Games> & string>(event: E, ...data: Args<Outgoing<Games>[E]>): boolean;
+  send<E extends keyof Outgoing<Games, Profile> & string>(
+    event: E,
+    ...data: Args<Outgoing<Games, Profile>[E]>
+  ): boolean;
   /** Returns the function that removes the listener. */
   on<E extends keyof Incoming<Games, Profile> & string>(
     event: E,
