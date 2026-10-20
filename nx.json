@@ -16,7 +16,8 @@
   "release": {
     "projects": ["packages/*"],
     "projectsRelationship": "fixed",
-    "releaseTagPattern": "v{version}",
+    "releaseTag": { "pattern": "v{version}" },
+    "git": { "push": true },
     "version": { "conventionalCommits": true, "preserveLocalDependencyProtocols": true },
     "changelog": { "workspaceChangelog": { "file": "{workspaceRoot}/CHANGELOG.md" }, "projectChangelogs": false }
   }
