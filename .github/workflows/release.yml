@@ -29,3 +29,5 @@ jobs:
         env:
           NPM_CONFIG_PROVENANCE: true
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # Nx's own push runs before it commits and tags, so the release is pushed here.
+      - run: git push --follow-tags

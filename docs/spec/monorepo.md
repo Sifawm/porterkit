@@ -114,7 +114,7 @@ Vitest everywhere. There is no Jest, no Playwright and no coverage threshold.
 ## Publishing
 
 - The registry is public npm, under the scope `@porterkit`. The repository is `Sifawm/porterkit` on GitHub, public, and the licence is MIT.
-- `nx release` versions and publishes `packages/*` only, as one fixed group. The version comes from conventional commits. It writes one `CHANGELOG.md` at the root, tags `vX.Y.Z` and pushes the commit and the tag. There is no semantic-release.
+- `nx release` versions and publishes `packages/*` only, as one fixed group. The version comes from conventional commits. It writes one `CHANGELOG.md` at the root, tags `vX.Y.Z`; `release.yml` pushes the commit and the tag once the packages are published. There is no semantic-release.
 - Releases are published from GitHub Actions with npm trusted publishing (OIDC) and signed provenance. No npm token is stored. Each of the five packages trusts the repository `Sifawm/porterkit` and the workflow `release.yml`.
 
 Three workflows. `ci.yml` and `release.yml` are started by hand; `docs.yml` follows a release:
