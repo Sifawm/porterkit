@@ -5,3 +5,4 @@ out-tsc
 .nx
 .godot
 examples/godot/public/godot
+.scratch
