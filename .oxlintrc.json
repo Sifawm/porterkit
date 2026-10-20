@@ -1,4 +1,4 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "ignorePatterns": ["dist", "out-tsc", ".nx", ".scratch", ".codegraph"]
+  "ignorePatterns": ["dist", "out-tsc", ".nx", ".scratch", ".codegraph", "apps/docs/.astro"]
 }

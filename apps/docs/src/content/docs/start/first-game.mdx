@@ -1,0 +1,60 @@
+---
+title: Your first Game
+description: A shared counter, end to end, from the example in the repository.
+sidebar:
+  order: 4
+spec:
+  - docs/spec/monorepo.md#example
+---
+
+import { Code } from '@astrojs/starlight/components';
+import { snippet } from '../../../snippet';
+import game from '../../../../../../examples/game/src/index.ts?raw';
+import manager from '../../../../../../examples/server/src/counter.manager.ts?raw';
+import appModule from '../../../../../../examples/server/src/app.module.ts?raw';
+import main from '../../../../../../examples/server/src/main.ts?raw';
+import porter from '../../../../../../examples/web/src/porter.ts?raw';
+import app from '../../../../../../examples/web/src/App.tsx?raw';
+
+The repository has a complete example in [`examples/`](https://github.com/Sifawm/porterkit/tree/main/examples): a counter everyone in the room pushes up to a target. The Admin sets the target and starts the Match, every User clicks `+1`, and the Match ends when the count reaches the target. The code below is that example as it is in the repository.
+
+## The Game
+
+One file, imported by the server and by the front. It declares the Game's entry in the games map, the types every message and piece of data must follow, and the Game definition, which creates that data.
+
+<Code code={snippet(game)} lang="ts" title="examples/game/src/index.ts" />
+
+## The server
+
+The Manager holds the rules. It gives the default settings, validates the Admin's changes and handles `increment`, the one message the Game declares.
+
+<Code code={snippet(manager)} lang="ts" title="examples/server/src/counter.manager.ts" />
+
+Registering it, and the application around it:
+
+<Code code={snippet(appModule)} lang="ts" title="examples/server/src/app.module.ts" />
+
+<Code code={snippet(main)} lang="ts" title="examples/server/src/main.ts" />
+
+## The front
+
+The client half of the Game is its one Applier: it turns `incremented` into the next state. The example lets the login screen pick the transport, so `transport` is a function read before every connection attempt.
+
+<Code code={snippet(porter)} lang="ts" title="examples/web/src/porter.ts" />
+
+The screens: login, the waiting room before a Match and the Match itself, all from the same hooks.
+
+<Code code={snippet(app)} lang="tsx" title="examples/web/src/App.tsx" />
+
+## Run it
+
+From the root of the repository:
+
+```sh
+pnpm install
+pnpm dev
+```
+
+The server listens on port 3000 and Vite prints the address of the front. After the first login the room id is in the address, after `#`. Open that address in a second tab to join the room as another User.
+
+The same Game drawn by Godot is in `examples/godot`; [Godot](/porterkit/guides/godot/setup/) explains how it is set up.

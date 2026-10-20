@@ -1,0 +1,84 @@
+---
+title: The instance
+description: createPorter, what the client holds and how to read it.
+sidebar:
+  order: 1
+spec:
+  - docs/spec/client.md#createporter
+  - docs/spec/client.md#reading
+  - docs/spec/client.md#state
+  - docs/spec/client.md#match-timers
+  - docs/spec/client.md#what-stays-with-the-integrator
+  - docs/adr/0005-client-state-is-plain-data.md
+  - docs/adr/0007-a-binding-is-given-the-instance.md
+---
+
+import { Code } from '@astrojs/starlight/components';
+import { snippet } from '../../../../snippet';
+import porter from '../../../../snippets/misfit/porter.ts?raw';
+import vanilla from '../../../../snippets/client/vanilla.ts?raw';
+import commands from '../../../../snippets/client/commands.ts?raw';
+
+<Code code={snippet(porter, 'instance')} lang="ts" title="porter.ts" />
+
+`createPorter` is called once, in a module of its own. The instance is a module-level value: nothing has to wrap the code that uses it, and an application with several Bindings creates one instance and gives it to each.
+
+| Option       | Default                                | What it does                                                                                                   |
+| ------------ | -------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `httpUrl`    | required                               | Base of the HTTP routes, global prefix included                                                                |
+| `wsUrl`      | required unless `transport` is `'sse'` | Full WebSocket URL, path included                                                                              |
+| `games`      | required                               | The client half of every Game, from `defineGame`                                                               |
+| `transport`  | `'ws'`                                 | `'ws'`, `'sse'` or a function called before every attempt ([Transports](/porterkit/guides/client/transports/)) |
+| `maxRetries` | 10                                     | Failed connection attempts in a row before giving up                                                           |
+| `storage`    | `sessionStorage`                       | Where the Token is kept                                                                                        |
+
+## What the client holds
+
+| Member        | What it is                                                                                                                                                     |
+| ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `connection`  | `{ status }`: `idle`, `connecting`, `connected`, `reconnecting` or `closed` with a `reason` ([Connection](/porterkit/guides/client/connection/))               |
+| `room`        | The room: `id`, `you`, `admin`, `isAdmin`, `locked`, `users` and the active Game's name and Match. `null` before the first `porter:joined` and after `leave()` |
+| `game(name)`  | The Game's `settings`, `state`, `userData`, `match`, and `you` and `users` with their per-User data as `data`                                                  |
+| `game()`      | The same for whichever Game is active, discriminated by `name`                                                                                                 |
+| `timer(name)` | A Match timer, or `null`                                                                                                                                       |
+
+`game(name)` throws if the active Game is another one, and both forms throw while `room` is `null`. Read them after checking that the connection is `connected`.
+
+`isAdmin` is `you.name === admin`, and it is the only value Porter derives.
+
+## State is plain data
+
+The state is the JSON that arrived on the wire, never instances of your classes, and it is never mutated. Every change produces new objects for what changed and keeps the identity of what did not. `room` and each User keep their identity while nothing in them changes, so comparing two values by identity tells whether anything in them changed. What `game()` returns is new after every change.
+
+After the connection closes, the last state stays readable until `leave()` or the next `login()`.
+
+## Reading and listening
+
+<Code code={snippet(vanilla, 'read')} lang="ts" />
+
+- `subscribe(onChange)` is called after every message that changed anything, without saying what. There are no selectors.
+- `on(event, listener)` receives the data of one event, after the state has been updated. It is for effects: navigating, opening a modal, showing a toast. Both return the function that removes them.
+- A listener that throws is caught and logged with `console.error`; the other listeners still run.
+
+Porter's `porter:ping` and `porter:pong` are invisible: the client answers pings itself.
+
+## Sending
+
+`send(event, data)` is the only way to send, typed for Porter's commands and for every Game's `client` events. It does not queue: unless the connection is `connected` it sends nothing and returns `false`. `true` means the message was handed to the transport, not that it arrived.
+
+Sending changes no state. The client waits for the announcement, which also reaches the sender, or for `porter:messageRejected`. Show a rejection from a listener in the component that sent the message:
+
+<Code code={snippet(commands, 'rejection')} lang="ts" />
+
+## Match timers
+
+`timer(name)` returns `null` when the active Match has no timer of that name. A `Timer` has `paused` and `remaining()`, the milliseconds left at the moment of the call, never below zero, worked out from the client's own clock. While the Match is paused it returns the same value on every call.
+
+A countdown does not go through the state and notifies nobody. Call `remaining()` on your own interval. Timer names are plain strings, not typed from the games map.
+
+## What stays with you
+
+- Drafts, such as settings being edited or an answer being typed, are the front's own state, not the Game's.
+- Effects go in a listener. Code that both changes state and navigates is split into an Applier and a listener.
+- What must outlive a reconnection belongs in the Game's state on the server. What the front keeps from a listener is lost on reconnecting, because `porter:joined` replaces everything and replays nothing.
+- A route guard for "connected" reads `connection.status === 'connected'`; one for "the room exists" calls `porter.roomExists(id)`.

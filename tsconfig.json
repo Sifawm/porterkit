@@ -28,6 +28,9 @@
     },
     {
       "path": "./examples/godot"
+    },
+    {
+      "path": "./apps/docs"
     }
   ]
 }

@@ -1,0 +1,31 @@
+---
+title: Match memory
+description: Server-only data for one room's Match.
+sidebar:
+  order: 6
+spec:
+  - docs/spec/nestjs.md#context
+  - CONTEXT.md
+---
+
+import { Code } from '@astrojs/starlight/components';
+import { snippet } from '../../../../snippet';
+import manager from '../../../../snippets/misfit/manager.ts?raw';
+
+Everything in `game.state` and in each `user.data` reaches every User. The Match memory is where a Manager keeps what nobody must see: the cards already dealt, or a count of Ticks. It belongs to one room, is never sent to anyone, and is created anew at every Match start.
+
+Declare its type and pass it as the third parameter of the context:
+
+<Code code={snippet(manager, 'memory')} lang="ts" title="misfit.manager.ts" />
+
+<Code code={snippet(manager, 'aliases')} lang="ts" title="misfit.manager.ts" />
+
+Then create it in `createMemory()`:
+
+<Code code={snippet(manager, 'createMemory')} lang="ts" title="misfit.manager.ts" />
+
+Porter calls `createMemory()` when the Game becomes the room's active Game and again at every Match start, and hands the result to every hook and handler as `ctx.memory`. A Manager without `createMemory` gets `undefined`.
+
+Since a Manager serves every room, its own fields are no place for a room's data. The Match memory is that place, and Porter replaces it at every Match start, so there is nothing to reset.
+
+The memory may hold anything, since it never crosses the wire: a `Map`, a `Set`, a class instance.

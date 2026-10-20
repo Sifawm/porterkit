@@ -1,0 +1,84 @@
+---
+title: Connection and reconnection
+description: The connection's statuses, retries, the Token and the calls that move between them.
+sidebar:
+  order: 4
+spec:
+  - docs/spec/client.md#connection
+  - docs/spec/client.md#login-and-token
+  - docs/spec/client.md#calls-out-of-place
+  - docs/spec/protocol.md#ping
+---
+
+import { Code } from '@astrojs/starlight/components';
+import { snippet } from '../../../../snippet';
+import transport from '../../../../snippets/client/transport.ts?raw';
+
+| `status`       | Meaning                                                              |
+| -------------- | -------------------------------------------------------------------- |
+| `idle`         | No Token: nothing has logged in or resumed                           |
+| `connecting`   | The first connection after `login` or `resume` is being opened       |
+| `connected`    | `porter:joined` has arrived                                          |
+| `reconnecting` | The connection dropped after `connected`, and the client is retrying |
+| `closed`       | The client has stopped; `reason` says why                            |
+
+`connected` begins with `porter:joined`, when the whole room has arrived, not when the socket or stream opens. What to show while `connecting`, `reconnecting` or `closed` is yours to decide from the status.
+
+## Retries
+
+A failed attempt, or a connection that drops, is retried by one loop, the same for both transports. The wait before a retry starts at 500 ms and grows by 1.3 times after each failure, up to 2 seconds. After `maxRetries` failed attempts in a row, 10 by default, the connection is `closed` with `unreachable`. A `porter:joined` sets the count back to zero.
+
+`unreachable` is the only close that keeps the Token. `reconnect()` starts the loop again from there. If the User's Grace period ran out meanwhile, the server answers `notInRoom` and the close is final.
+
+## A silent connection
+
+`porter:joined` carries the server's ping interval. When two intervals pass with no message at all from the server, the client takes the connection as dropped, closes it and retries. You cannot turn this off. It keeps the status honest; whether the User keeps its place depends on the server's Grace period.
+
+## Final closes
+
+Every other close forgets the Token and is never retried:
+
+| Cause                                  | `reason`                                      |
+| -------------------------------------- | --------------------------------------------- |
+| The server refused the Token           | `invalidToken`, `roomNotFound` or `notInRoom` |
+| The Admin removed the User             | `kicked`                                      |
+| The same User connected somewhere else | `replaced`                                    |
+| `leave()` was called                   | `left`                                        |
+| `POST /porter/commands` answered `401` | the `reason` of its body                      |
+
+A User has a single connection, and a second one replaces the first. Two tabs that share a Token (with `localStorage`, for example) take the connection from each other, and the one left behind closes with `replaced`.
+
+## The Token
+
+On an accepted login the client stores `{ token, roomId }`, as JSON under the key `porter`, and nothing else. The name and the Profile come back in `porter:joined`. The default storage is `sessionStorage`, one per tab; pass `storage` to keep it elsewhere:
+
+<Code code={snippet(transport, 'storage')} lang="ts" />
+
+The key is fixed. To use another, pass a `storage` that maps it. A stored value that is not valid JSON or lacks `token` or `roomId` is no Token: `resume()` removes it.
+
+The Token is opaque: the client reads neither the room nor the name from it, and it is valid for as long as its User is in the room.
+
+## Leaving
+
+`leave()` closes the connection, forgets the Token and sets the connection to `closed` with `left`. It tells the server nothing, because the protocol has no message for leaving: for the other Users this User is `reconnecting` until its Grace period runs out.
+
+## Calls out of place
+
+None of `login`, `resume`, `reconnect` and `leave` throws for being called at the wrong moment, and each is harmless when repeated.
+
+| Call          | Connection                                  | What it does                                                                                                             |
+| ------------- | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `resume()`    | `connecting`, `connected` or `reconnecting` | Nothing; returns `true`                                                                                                  |
+| `resume()`    | `idle` or `closed`                          | Connects with a stored Token and returns `true`, or returns `false` without one. After `unreachable` it is `reconnect()` |
+| `reconnect()` | anything but `closed` with `unreachable`    | Nothing                                                                                                                  |
+| `login()`     | any                                         | Sends the request and touches nothing until the answer                                                                   |
+| `leave()`     | `idle`                                      | Removes a stored Token, if any; stays `idle`                                                                             |
+| `leave()`     | `closed`                                    | Forgets the Token and the room; `closed` with `left`                                                                     |
+
+An accepted `login()` while a room is open closes that connection and replaces the Token and the state. The previous room hears nothing, as with `leave()`. A rejected `login()`, or one whose request fails, leaves everything as it was. Of two `login()` in flight, the last accepted one to resolve stays.
+
+`resume()` is safe to call twice in a row, as an effect runs under React's StrictMode.
+
+## Before logging in
+
+`roomExists(id)` asks `HEAD /porter/rooms/:id` and resolves `true` or `false`; it rejects only when the request itself fails. A front may repeat the server's name rules to warn early, but the server decides: handle `invalidName` and `invalidProfile` either way.

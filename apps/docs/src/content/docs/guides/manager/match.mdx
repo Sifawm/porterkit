@@ -1,0 +1,90 @@
+---
+title: The Match
+description: Start, pause, continue and end, and the hooks Porter calls at each step.
+sidebar:
+  order: 2
+spec:
+  - docs/spec/nestjs.md#match
+  - docs/spec/nestjs.md#users-and-the-match
+  - docs/spec/protocol.md#match
+---
+
+import { Code } from '@astrojs/starlight/components';
+import { snippet } from '../../../../snippet';
+import manager from '../../../../snippets/misfit/manager.ts?raw';
+
+A Match is one run of the active Game, from its start to its end. Porter owns it: whether there is one, whether it is paused, its timers and its Ticks. A Manager never writes code to reset a Match; it reacts to the hooks.
+
+A room is always in one of four situations with its active Game:
+
+| `status`  | Meaning                                                         |
+| --------- | --------------------------------------------------------------- |
+| `idle`    | No Match of this Game has been played yet: the waiting room     |
+| `running` | A Match is under way                                            |
+| `paused`  | A Match is under way and stopped, with a reason                 |
+| `ended`   | The last Match is over, with its end reason: the results screen |
+
+"Under way" means `running` or `paused`.
+
+<Code code={snippet(manager, 'hooks')} lang="ts" title="misfit.manager.ts" />
+
+## Starting
+
+Only the Admin starts a Match, with `porter:startMatch`. Porter goes through these steps in order and stops at the first refusal:
+
+1. The sender is not the Admin: `notAdmin`.
+2. A Match is under way: `notAllowedNow`.
+3. Fewer Users are `connected` or `reconnecting` than the Game's `minPlayers`: `belowMinPlayers`.
+4. `canStart(ctx)`, when the Manager has it, throws `ctx.reject(reason)`: the Admin gets `{ code: 'game', reason }`.
+5. Porter creates new state, new per-User data for every User and a new Match memory. The settings are kept.
+6. The Match is `running` and everyone receives `porter:matchStarted`.
+7. Porter calls `onStart(ctx)`. The Game sends its opening from there, with its own messages.
+
+`canStart` is synchronous. Anything it does after an `await` comes too late to veto. A veto that needs something asynchronous gets it beforehand, through an [`@AnyTime()` message](/porterkit/guides/manager/messages/#with-or-without-a-match) that leaves the result in the state.
+
+`onStart` may be `async`. Starting again from `ended` is another `porter:startMatch`; there is no separate message to play again.
+
+## Pausing and continuing
+
+The Admin pauses with `porter:pauseMatch` and a reason, and continues with `porter:continueMatch`.
+
+- On a pause the Match is `paused` with that reason, every Match timer stops, everyone receives `porter:matchPaused`, and Porter calls `onPause(ctx, reason)`.
+- On continuing the Match is `running` again, each timer resumes with the time it had left, everyone receives `porter:matchContinued`, and Porter calls `onContinue(ctx)`.
+
+Porter does not read the reason. It is whatever the Admin's client sent, `null` when it sent none, and it reaches `onPause` and every client as it is.
+
+A pause stops the timers and the Ticks. It does not hold Game messages back: handlers keep receiving them while `paused`.
+
+### A pause for everyone
+
+`ctx.pauseMatch(reason)` and `ctx.continueMatch()` do exactly what the Admin's two messages do, announcements and hooks included. That is how a Game lets a User who is not the Admin pause: a Game message of its own, with its own rule for who may send it, whose handler calls the context.
+
+<Code code={snippet(manager, 'pause')} lang="ts" title="misfit.manager.ts" />
+
+Out of place they do nothing: `pauseMatch` unless the Match is `running`, `continueMatch` unless it is `paused`. Nothing is announced and nothing is thrown.
+
+## Ending
+
+A Match ends in one of three ways, each with its `EndReason`:
+
+| Cause                                         | `EndReason`              |
+| --------------------------------------------- | ------------------------ |
+| The Manager calls `ctx.endMatch(reason)`      | `{ by: 'game', reason }` |
+| The Admin sends `porter:endMatch`             | `{ by: 'admin' }`        |
+| The Users in the room fall below `minPlayers` | `{ by: 'minPlayers' }`   |
+
+In all three Porter cancels every Match timer, sets the Match to `ended`, announces `porter:matchEnded` and then calls `onEnd(ctx, reason)`.
+
+State and per-User data stay as they were until the next Match starts, so the results screen can show them. The data of a User who leaves goes with it, also after the end. A Game whose results must outlive the Users writes them into its state or its end reason.
+
+`ctx.endMatch` without a Match under way does nothing: no announcement, no `onEnd`, nothing thrown. A second call is ignored, and so is a call from inside `onEnd`. A handler that awaits may find the Match already ended by the Admin or by the minimum, and the call then asks for what already holds.
+
+## Users during a Match
+
+- Users may join a room with a Match under way, unless the Admin [locks it](/porterkit/guides/rooms/control/#locking). A User who joins gets new per-User data from the Game definition.
+- `onUserDisconnected(ctx, user)` is called when a User's connection drops and it becomes `reconnecting`.
+- `onUserLeft(ctx, user)` is called when a User leaves the room, because its Grace period ran out or because the Admin removed it.
+- Both are called only with a Match under way. There is no hook for a User joining or coming back.
+- The minimum is checked when a User leaves, not when its connection drops. If the count falls below `minPlayers`, the Match ends with `{ by: 'minPlayers' }` and the Manager receives `onEnd` instead of `onUserLeft`.
+
+Every hook is optional. Each one but `onTick` is called after the change has happened and has been announced, so it cannot undo it. [Errors and order](/porterkit/guides/manager/errors/) covers what happens when one throws.

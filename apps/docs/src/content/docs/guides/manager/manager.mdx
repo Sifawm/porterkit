@@ -1,0 +1,74 @@
+---
+title: Writing a Manager
+description: The server-side class of a Game, its aliases and the context it receives.
+sidebar:
+  order: 1
+spec:
+  - docs/spec/nestjs.md#manager
+  - docs/spec/nestjs.md#registering-a-game
+  - docs/spec/nestjs.md#context
+---
+
+import { Code } from '@astrojs/starlight/components';
+import { snippet } from '../../../../snippet';
+import manager from '../../../../snippets/misfit/manager.ts?raw';
+
+A Manager is the server side of one Game: its rules, its default settings and its message handlers. Porter owns the room, the Users and the Match, and calls the Manager when something happens that its Game should know about.
+
+## Three aliases
+
+Every Manager starts with the same three lines, which bind Porter's generic types to one Game:
+
+<Code code={snippet(manager, 'aliases')} lang="ts" title="misfit.manager.ts" />
+
+- `On` is the Game's typed [message decorator](/porterkit/guides/manager/messages/).
+- `Ctx` is the context every hook and handler receives. Its third parameter is the type of the [Match memory](/porterkit/guides/manager/memory/), and you leave it out when the Game has none.
+- `MisfitUser` is a User of this Game, with its per-User data typed.
+
+## The class
+
+<Code code={snippet(manager, 'class')} lang="ts" title="misfit.manager.ts" />
+
+`@GameManager(definition)` marks the class as the Manager of that Game and also makes it `@Injectable()`. Every Manager implements `GameManager<Ctx>`, which asks for two methods, [`defaultSettings` and `updateSettings`](/porterkit/guides/game/settings/). Everything else is optional, one interface per method, named after it: `CreateMemory`, `CanStart`, `OnStart`, `OnPause`, `OnContinue`, `OnTick`, `OnEnd`, `OnUserDisconnected` and `OnUserLeft`. Implementing them is not required, but it makes the compiler check each method's signature.
+
+A Manager is an ordinary NestJS singleton, one for the whole application, with constructor injection. It is registered by being in the `providers` of any module ([The server](/porterkit/start/server/#register-a-game)). Porter finds it with `DiscoveryService`; a class that is in no module's `providers` is invisible to it.
+
+Because one instance serves every room, a Manager keeps nothing about any room in its fields. Everything of a room reaches it through the context.
+
+## The context
+
+Every hook and handler receives the context of its room as the first argument. It is the same object for as long as the Game is the room's active Game, so a Match timer callback may capture it.
+
+| Member                                  | What it is                                                     |
+| --------------------------------------- | -------------------------------------------------------------- |
+| `room.id`                               | The room's id                                                  |
+| `room.admin`                            | The Admin's name                                               |
+| `room.users`                            | `connected` and `reconnecting` Users, in the order they joined |
+| `room.connected`                        | Only the `connected` ones, in the same order                   |
+| `room.user(name)`                       | One User, or `undefined`                                       |
+| `room.broadcast(event, data)`           | Sends a server message of the Game to every `connected` User   |
+| `game.settings`                         | The settings, with `set`                                       |
+| `game.state`                            | The Game's state, replaced at every Match start                |
+| `memory`                                | The [Match memory](/porterkit/guides/manager/memory/)          |
+| `timers`                                | The [Match timers](/porterkit/guides/manager/timers/)          |
+| `reject(reason)`                        | Builds a rejection: `throw ctx.reject('alreadyAnswered')`      |
+| `endMatch(reason)`                      | Ends the Match with the Game's end reason                      |
+| `pauseMatch(reason)`, `continueMatch()` | Pause and continue, as the Admin's messages do                 |
+
+Users who have logged in and not yet connected appear in neither list.
+
+A User of the context has `name`, `status`, `data` (its per-User data) and `send(event, data)`. Events and their data are typed from the Game's `server` entry in the games map. There is no filter on `broadcast`: to reach some Users, call `send` on each.
+
+`send` to a User that is `reconnecting`, or that has left, does nothing. It does not throw, queue or log. Porter keeps no messages for a User who is away, so what a User must see when it comes back goes in `game.state` or in its `data`, which it receives whole when it reconnects.
+
+## Read the context every time
+
+`game.state` and every `user.data` are new objects at every Match start. Read them from the context each time and keep no reference to them: one kept from an earlier Match points at data nobody sees.
+
+The same holds after an `await`. While a handler waits, other messages, timers and Users leaving can change the room, and the Match may have ended. After an `await`, read again from the context and trust nothing read before it. [Errors and order](/porterkit/guides/manager/errors/#order-within-a-room) says exactly what may happen in between.
+
+## What a Manager cannot do
+
+- Change the Admin. Only Porter does.
+- See a User's Profile.
+- Use NestJS's guards, pipes, interceptors or filters. Its methods do not run inside NestJS's execution context, so `@UseGuards` and the like have no effect there. The guard of `On` and `@AdminOnly()` take their place.

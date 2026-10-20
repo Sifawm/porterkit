@@ -1,0 +1,48 @@
+---
+title: Room control
+description: Locking the room, removing a User and changing the Game.
+sidebar:
+  order: 3
+spec:
+  - docs/spec/protocol.md#removing-a-user
+  - docs/spec/protocol.md#changing-the-game
+  - docs/spec/nestjs.md#changing-the-game
+  - docs/spec/nestjs.md#removing-a-user
+---
+
+import { Code } from '@astrojs/starlight/components';
+import { snippet } from '../../../../snippet';
+import commands from '../../../../snippets/client/commands.ts?raw';
+import several from '../../../../snippets/several.ts?raw';
+
+Three of Porter's messages control the room. All three are for the Admin only, and each is announced to everyone, the Admin included, as its confirmation.
+
+## Locking
+
+<Code code={snippet(commands, 'lock')} lang="ts" />
+
+A locked room refuses new logins with `roomLocked`, and nothing else. A User who has logged in keeps its place and may still connect, and one who is away may come back. Everyone receives `porter:roomLocked`, also when the value did not change. Lock a room to keep newcomers out of a Match under way.
+
+## Removing a User
+
+<Code code={snippet(commands, 'kick')} lang="ts" />
+
+- A connected User receives `porter:kicked` and its connection is closed; the client closes with `kicked` and does not retry.
+- A User who is away leaves at once and its Grace period is cancelled. If it comes back, its Token gets `notInRoom`.
+- The others receive `porter:userLeft` with `reason: 'kicked'`.
+
+A User who has logged in and not yet connected cannot be removed: its name gives `notFound`, like a name nobody has. The Admin cannot remove itself: `notAllowedNow`.
+
+The User leaves exactly as when its Grace period runs out: the Game's `onUserLeft` is called, and a Match that falls below the minimum ends.
+
+## Changing the Game
+
+<Code code={snippet(several, 'change')} lang="ts" />
+
+Allowed only without a Match under way; otherwise `notAllowedNow`. A name that is not a registered Game gets `notFound`.
+
+Porter first asks the new Game's Manager for its `defaultSettings()`. If that fails, the Admin gets `failed` and the room keeps its Game as it was. If a Match started while the settings were loading, the Admin gets `notAllowedNow` and nothing changes.
+
+Then Porter discards the previous Game's settings, state, per-User data, Match memory and last result, sets up the new Game with its default settings, new data and its Match `idle`, and announces `porter:gameChanged` with those settings. Each client creates the new state and per-User data from the shared definition.
+
+Changing to the Game that is already active is carried out like any other change, so it resets the Game to its defaults. Of two changes in a row, the room ends in the Game of the one whose settings arrived last.

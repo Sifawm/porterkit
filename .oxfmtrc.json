@@ -8,7 +8,9 @@
     ".nx",
     ".scratch",
     ".codegraph",
-    "docs",
+    "/docs",
+    "apps/docs/src/content/docs/reference/api",
+    "apps/docs/.astro",
     "CONTEXT.md",
     "CHANGELOG.md",
     "pnpm-lock.yaml"

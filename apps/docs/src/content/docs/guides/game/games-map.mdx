@@ -1,0 +1,78 @@
+---
+title: Games map and Game definition
+description: Declare a Game's types once and share its definition between server and client.
+sidebar:
+  order: 1
+spec:
+  - docs/spec/contracts.md#games-map
+  - docs/spec/contracts.md#game-definition
+  - docs/spec/contracts.md#behaviour
+  - docs/adr/0003-games-type-map.md
+---
+
+import { Code } from '@astrojs/starlight/components';
+import { snippet } from '../../../../snippet';
+import game from '../../../../snippets/misfit/game.ts?raw';
+import several from '../../../../snippets/several.ts?raw';
+
+A Game has two parts that server and client share: its types, as an entry in the games map, and its Game definition, which creates its data. Neither contains any rule. They go in code both sides import, and that code imports nothing from the server.
+
+## The games map
+
+The games map is one type, from each Game's name to that Game's types. Every generic type of Porter takes it as its first parameter, which is how a handler, a `send` and an Applier know the data of each message.
+
+<Code code={snippet(game, 'types')} lang="ts" title="misfit.game.ts" />
+
+| Field          | What it is                                                                   |
+| -------------- | ---------------------------------------------------------------------------- |
+| `settings`     | What the Admin can change before or during a Match                           |
+| `state`        | The Game's data, the same for every User                                     |
+| `userData`     | One User's data in the Game                                                  |
+| `client`       | Client to server: event name to data, `undefined` for a message without data |
+| `server`       | Server to client: event name to data                                         |
+| `pauseReason`  | What `porter:pauseMatch` carries; `null` for a Game without pause reasons    |
+| `endReason`    | What the Game gives when it ends a Match                                     |
+| `rejectReason` | The Game's own reasons for refusing a message, as string literals            |
+
+A Game's event names never start with `porter:`, which is reserved for Porter's own; a map with such a name does not compile. By convention client messages are in the imperative (`answer`) and server messages in the past tense (`cardDealt`).
+
+## The Game definition
+
+<Code code={snippet(game, 'definition')} lang="ts" title="misfit.game.ts" />
+
+- `name` is the Game's key in the games map.
+- `minPlayers` is the fewest Users a Match may have. Porter refuses to start below it and ends a Match that falls below it.
+- `tickRate`, when present, makes the Game run in real time: see [Ticks](/porterkit/guides/manager/ticks/).
+- The three factories take no arguments and return a new value on every call. Porter calls them whenever the Game needs new data, on the server and on every client: the state and per-User data, for instance, at every Match start.
+- `createSettings()` returns the settings plus `set(data)`, which replaces them. It is the only method Porter asks of a Game's data.
+
+`satisfies GameDefinition<Games, 'misfit'>` checks the definition against the map without widening its type.
+
+## A Game's data is its JSON
+
+Porter reads settings, state and per-User data with `JSON.stringify`, and sends them to every User as they are. That has some consequences:
+
+- What a factory returns must survive a JSON round trip unchanged: no `Map`, `Set` or `Date`, no circular references, nothing held in private fields. A class instance is fine as long as its fields are plain data.
+- Every enumerable field reaches every User. Keep what Users must not see in the [Match memory](/porterkit/guides/manager/memory/).
+- A value that needs another shape on the wire defines `toJSON()`, and the games map declares that shape.
+- The compiler catches a missing field or one of the wrong type. It does not catch an extra field, and nothing checks the data at run time.
+
+On the client the data is always plain objects, also when the factory returns a class instance.
+
+## Aliases
+
+Every type of Porter takes the games map, and most also take the Profile. Write them once, behind aliases of your own:
+
+<Code code={snippet(game, 'wire')} lang="ts" title="misfit.game.ts" />
+
+On the server the usual aliases are a Game's context and User ([Writing a Manager](/porterkit/guides/manager/manager/)); on the client, the instance itself carries both parameters.
+
+## Several Games
+
+A room always has one active Game, and the Admin [changes it](/porterkit/guides/rooms/control/#changing-the-game) between Matches. Add each Game to the map and register its Manager; `initialGame` names the one new rooms start with.
+
+<Code code={snippet(several, 'map')} lang="ts" title="games.ts" />
+
+There is one games map, and every type parameter takes that whole map, also for a single Game: `defineGame<Games, 'misfit'>`, `handlersOf<Games, 'misfit'>`, `GameContext<Games, typeof misfit>`. The client half of a Game typed with a smaller map does not fit in `createPorter`.
+
+<Code code={snippet(several, 'client')} lang="ts" title="porter.ts" />

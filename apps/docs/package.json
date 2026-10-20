@@ -1,0 +1,44 @@
+{
+  "name": "@porterkit/docs",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "astro dev --ignore-lock",
+    "build": "astro build",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@astrojs/starlight": "0.42.6",
+    "astro": "7.4.0",
+    "starlight-links-validator": "0.27.0",
+    "starlight-typedoc": "0.23.1",
+    "typedoc": "0.28.20",
+    "typedoc-plugin-markdown": "4.14.0"
+  },
+  "devDependencies": {
+    "@nestjs/common": "^11.0.0",
+    "@nestjs/core": "^11.0.0",
+    "@nestjs/platform-ws": "^11.0.0",
+    "@porterkit/client": "workspace:*",
+    "@porterkit/contracts": "workspace:*",
+    "@porterkit/example-game": "workspace:*",
+    "@porterkit/godot": "workspace:*",
+    "@porterkit/nestjs": "workspace:*",
+    "@porterkit/react": "workspace:*",
+    "@types/react": "^19.0.0",
+    "react": "^19.0.0"
+  },
+  "nx": {
+    "targets": {
+      "build": {
+        "dependsOn": [
+          "^build"
+        ],
+        "outputs": [
+          "{projectRoot}/dist"
+        ]
+      }
+    }
+  }
+}

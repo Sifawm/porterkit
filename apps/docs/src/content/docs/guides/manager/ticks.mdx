@@ -1,0 +1,53 @@
+---
+title: Ticks
+description: Run a Game in real time, advanced by the server at a fixed rate.
+sidebar:
+  order: 5
+spec:
+  - docs/spec/nestjs.md#ticks
+  - docs/spec/contracts.md#behaviour
+  - docs/adr/0009-real-time-is-a-tick-over-websocket.md
+---
+
+import { Code } from '@astrojs/starlight/components';
+import { snippet } from '../../../../snippet';
+import game from '../../../../snippets/chase/game.ts?raw';
+import manager from '../../../../snippets/chase/manager.ts?raw';
+
+A Tick is one advance of a Match by a fixed length of time. A Game whose definition has a `tickRate` has Ticks: Porter calls the Manager's `onTick(ctx)` that many times a second while a Match is `running`. A Game without a `tickRate` has none.
+
+<Code code={snippet(game, 'definition')} lang="ts" title="chase.game.ts" />
+
+`tickRate` is a number greater than zero and at most 1000; it need not be an integer. The definition and the Manager go together: a `tickRate` without `onTick`, an `onTick` without a `tickRate`, or a `tickRate` out of range stops the application from starting.
+
+<Code code={snippet(manager, 'manager')} lang="ts" title="chase.manager.ts" />
+
+## How Ticks run
+
+- Each Tick is `1 / tickRate` seconds. `onTick` receives the context and nothing else: no elapsed time and no count. A Game that counts its Ticks keeps the count in its Match memory.
+- Ticks start with the Match. The first comes one length after `porter:matchStarted`, when `onStart` has been called, though an `async` one may still be awaiting.
+- Ticks stop while the Match is paused, and time spent paused owes none. After `porter:continueMatch` the first Tick comes one length later.
+- `onTick` is never called with the Match paused or over. It may call `ctx.endMatch`, and no Tick follows.
+- Porter announces nothing for a Tick. What Users see is what `onTick` sends.
+
+## Late Ticks
+
+Ticks follow the clock. When the process was busy and Porter comes to a Tick late, it calls `onTick` once for each length gone by since the last one, one after another, up to 5 times. When more than 5 are owed the rest are dropped, and the Match falls behind the clock by that much without catching up.
+
+`onTick` is synchronous, so a Tick is atomic: no message, timer or other Tick runs in the middle of one.
+
+## Writing a real-time Game
+
+A Tick sends two kinds of message. What happened, a User caught or a wall broken, is a message with an Applier on the client, so the client's state follows it. Where everything is now, sent every Tick, is a message with no Applier: it reaches the listener that draws and never goes through the client's state.
+
+`onTick` writes every change into `game.state` and each `user.data`, positions included, so the state on the server is always current. A User who connects or comes back gets it in `porter:joined`; the messages it missed are not replayed.
+
+A handler only records what the User asked for, such as a direction, and the next Tick applies it. The rules then advance in one place.
+
+Clients of a Game with Ticks connect over WebSocket. Over SSE each client message is an HTTP request of its own, sent after the previous one has been answered, and a User feels the delay. Porter does not enforce it: the transport is the [client's option](/porterkit/guides/client/transports/).
+
+An `onTick` that throws is logged and the Ticks go on. One that always throws logs `tickRate` lines a second until the Admin ends the Match.
+
+## Limits
+
+Ticks travel over the same reliable, ordered connection as any other message, and nothing on the client predicts or rewinds. That suits a Game whose state changes a little every Tick and tolerates a late message, such as a grid where players chase each other. It does not suit a Game where tens of milliseconds decide, such as a shooter or a fighting game: interpolation and prediction, if a Game needs them, are written in the code that draws.

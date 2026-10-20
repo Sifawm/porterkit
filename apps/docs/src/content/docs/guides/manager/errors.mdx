@@ -1,0 +1,55 @@
+---
+title: Errors and order
+description: What happens when a Manager throws, the order of a room's events, and what Porter logs.
+sidebar:
+  order: 7
+spec:
+  - docs/spec/nestjs.md#exceptions-in-hooks
+  - docs/spec/nestjs.md#order-within-a-room
+  - docs/spec/nestjs.md#logging
+---
+
+## When a hook throws
+
+The hooks are `onStart`, `onPause`, `onContinue`, `onEnd`, `onUserDisconnected`, `onUserLeft` and `onTick`. Each one but `onTick` runs after its change has happened and been announced, and that announcement already confirmed the request.
+
+When a hook throws, or the promise of `onStart` rejects, Porter logs it and nothing else happens. Nobody gets `failed`, the change is not undone and the Match goes on. The exception does not reach whoever caused the hook either: when a handler calls `ctx.endMatch` and `onEnd` throws, `ctx.endMatch` returns normally and the handler carries on.
+
+An `onStart` that throws leaves a Match `running` without its opening. The Admin gets out of it with `porter:endMatch`; Porter does not end the Match itself.
+
+`canStart` and `updateSettings` are different: they run before any announcement, and what they throw answers the sender.
+
+| Thrown from                                                          | The sender gets              |
+| -------------------------------------------------------------------- | ---------------------------- |
+| A handler, `canStart` or `updateSettings`, with `ctx.reject(reason)` | `{ code: 'game', reason }`   |
+| A handler, `canStart` or `updateSettings`, anything else             | `failed`, and Porter logs it |
+| `defaultSettings` on `porter:changeGame`                             | `failed`, and Porter logs it |
+| A hook or a Match timer callback                                     | nothing; Porter logs it      |
+
+## Synchronous methods
+
+`updateSettings`, `canStart`, `onPause`, `onContinue`, `onEnd`, `onUserDisconnected`, `onUserLeft` and `onTick` are synchronous, and Porter does not await them. TypeScript accepts an `async` method in their place, so Porter attaches a `catch` to any promise one of them returns: a rejection is logged like any other exception, and the process never dies of an unhandled rejection from a Manager.
+
+In `canStart` and `updateSettings`, whatever happens after the first `await` comes too late to veto the start or to prevent the announcement.
+
+## Order within a room
+
+Porter does not queue the messages of a room. It delivers each one as it arrives and does not wait for an `async` handler to finish, so the next message of that room may be delivered while the first is awaiting.
+
+- Whatever runs without an `await` in between is atomic. Porter's own checks, and a handler up to its first `await`, never interleave with anything.
+- The messages of one connection start being processed in the order they arrived.
+- While a handler awaits, anything else may happen: another message, a Match timer, a Tick, a User dropping or leaving, a Grace period running out, the Match ending.
+- After an `await`, read again from the context and trust nothing read before.
+
+Porter itself awaits in two places only, both `defaultSettings()`: when a room is created, before the room exists, and on `porter:changeGame`.
+
+## Logging
+
+Porter logs with the `Logger` of `@nestjs/common` under the context `Porter`, at `error` level only. There is no logging option: replace the logger the NestJS way.
+
+It logs two things:
+
+- An exception from your code, other than a `ctx.reject`: a hook, a handler, `canStart`, `updateSettings`, `defaultSettings`, `validateProfile`, `fallbackProfile` or a Match timer callback that throws or whose promise rejects. The line carries the room when there is one, the Game, the name of the method, message or timer, and the stack.
+- An unexpected error of Porter's own.
+
+It does not log the normal flow (logins, connections, Users leaving, Admin changes, Matches) or rejected messages, except for `failed`. A line never carries a Token, a Profile or a message's data; only the room id, the Game's name, the User's name and the event name.

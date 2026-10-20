@@ -1,0 +1,49 @@
+---
+title: Appliers
+description: Turn a Game's server messages into the next state on the client.
+sidebar:
+  order: 2
+spec:
+  - docs/spec/client.md#defining-a-game
+  - docs/spec/client.md#appliers
+  - docs/spec/client.md#receiving
+---
+
+import { Code } from '@astrojs/starlight/components';
+import { snippet } from '../../../../snippet';
+import client from '../../../../snippets/misfit/client.ts?raw';
+
+An Applier is the client-side function that turns one of a Game's server messages into the next state of that Game. It is the only place a Game's state changes on the client: Porter applies its own messages, and your Appliers apply your Game's.
+
+<Code code={snippet(client)} lang="ts" title="misfit.client.ts" />
+
+`defineGame(definition, appliers)` takes the shared Game definition whole and one optional Applier per event of the Game's `server` map. It adds nothing else and has no effect.
+
+## Writing one
+
+An Applier receives the Game's data (`settings`, `state` and `userData` by User name), the message's data, and a read-only view of the room (`you`, `admin`, and `users` with their name and status). It returns the next data.
+
+- Return new objects for what changed and the same objects for what did not, as with any immutable update. The client relies on that identity to tell what changed.
+- Never mutate what you receive.
+- An Applier that returns the object it received has changed nothing, and nobody is notified.
+- It runs only while its Game is the active one.
+
+Porter does not depend on immer. If you prefer to write updates as mutations, wrap your Appliers with it.
+
+## Events without an Applier
+
+A Game event with no Applier is valid. It reaches the listeners registered with `on` and changes nothing. That fits messages the state has nowhere to keep, like `roundEnded` above, and messages sent every Tick that only the drawing code reads.
+
+## What happens to each message
+
+The client handles every incoming message in three steps:
+
+1. Apply. A `porter:` message is applied by the client itself; any other goes to the active Game's Applier for that event, if it has one.
+2. Notify. If the first step changed anything, subscribers are notified.
+3. Listen. The listeners of that event are called, and they see the state already updated.
+
+An Applier that throws is caught. The state stays as it was before the message, nobody is notified, the listeners of the event are still called, and the error goes to `console.error` with the Game and the event. The connection stays up, so that Game's state may lag behind the server until the next `porter:joined` or Match start.
+
+## What Porter applies
+
+You never write Appliers for Porter's own messages. At every Match start and on a change of Game, the client creates the new state and per-User data from the shared definition, exactly as the server does, and turns them into plain data. A User who joins gets new per-User data the same way. `porter:joined` replaces everything on every connection and reconnection.

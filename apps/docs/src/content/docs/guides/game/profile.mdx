@@ -1,0 +1,52 @@
+---
+title: Profile
+description: Data a User brings into the room, its limits and its validation.
+sidebar:
+  order: 3
+spec:
+  - docs/spec/nestjs.md#login
+  - docs/spec/protocol.md#profile
+  - CONTEXT.md
+---
+
+import { Code } from '@astrojs/starlight/components';
+import { snippet } from '../../../../snippet';
+import options from '../../../../snippets/server/options.ts?raw';
+import game from '../../../../snippets/misfit/game.ts?raw';
+import porter from '../../../../snippets/misfit/porter.ts?raw';
+import commands from '../../../../snippets/client/commands.ts?raw';
+
+A Profile is data you attach to a User: an avatar, a colour, a team. The User brings it at login and may change it while it is in the room. Porter stores it and sends it to every User without reading it.
+
+Its type is the second parameter of `createPorter`, and it can be any JSON value:
+
+<Code code={snippet(game, 'aliases')} lang="ts" title="misfit.game.ts" />
+
+<Code code={snippet(porter, 'instance')} lang="ts" title="porter.ts" />
+
+## Size and validation
+
+On the server, a Profile passes two checks, at login and on every change:
+
+1. Its serialization, `JSON.stringify(profile)` as UTF-8, is at most `maxProfileSize` bytes, 2048 by default.
+2. `validateProfile(profile, others)`, when you give it, returns `true`. `others` are the Profiles of the room's other Users, in the order they joined, including those who have logged in and not yet connected. It is empty when the login creates a room.
+
+At login, a refused Profile can be replaced instead of refusing the User: `fallbackProfile(others)` returns the Profile to store, and that one goes through the same two checks.
+
+<Code code={snippet(options, 'options')} lang="ts" title="app.module.ts" />
+
+When a Profile is refused and there is no fallback, or the fallback is refused too, the login answers `invalidProfile`. A validator or a fallback that throws refuses the Profile, and the error is logged.
+
+An absent Profile is stored as `null`, which takes 4 bytes. If your Profile type does not admit `null`, refuse it in `validateProfile`.
+
+## Changing it
+
+A User changes its own Profile, and only its own, with `porter:updateProfile`. It is the one Porter message, besides the pong, that any User may send.
+
+<Code code={snippet(commands, 'profile')} lang="ts" />
+
+The new Profile replaces the old one whole and goes through the same checks against the other Users' Profiles. There is no fallback here: a refused Profile gets `invalidProfile` and nothing changes. When it passes, everyone receives `porter:profileUpdated`.
+
+## What a Manager sees
+
+A Manager never sees a Profile. The Users a Manager handles have a name, a status, their data in the Game and `send`, and no Profile. A Game that needs something about a User on the server receives it in a Game message and keeps it in that User's per-User data.

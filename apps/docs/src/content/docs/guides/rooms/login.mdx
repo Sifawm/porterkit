@@ -1,0 +1,71 @@
+---
+title: Login and Token
+description: Creating and joining rooms, the rules for names, and the Token.
+sidebar:
+  order: 1
+spec:
+  - docs/spec/nestjs.md#rooms
+  - docs/spec/nestjs.md#login
+  - docs/spec/nestjs.md#token
+  - docs/spec/protocol.md#post-porterlogin
+  - docs/adr/0004-opaque-room-token.md
+---
+
+import { Code } from '@astrojs/starlight/components';
+import { snippet } from '../../../../snippet';
+import login from '../../../../snippets/client/login.ts?raw';
+
+A User is a name in exactly one room. It has no existence outside that room, and there are no accounts: the name is its identity there.
+
+<Code code={snippet(login, 'join')} lang="ts" />
+
+## Rooms
+
+A login without `roomId` creates a room, and its User becomes the Admin. Porter generates the id: 10 characters from `a-z` and `0-9`. You cannot supply the id or veto the creation.
+
+- A room is found by its exact id; case matters.
+- A new room starts with the Game named by `initialGame`, its default settings, new state and its Match `idle`.
+- Porter waits for the Game's `defaultSettings()` before creating anything. If it fails, the login answers `failed` and there is no room.
+- A room ceases to exist when its last User leaves. It does not expire from inactivity, and nobody can close it.
+
+The room and the User cannot be replaced or extended. Your data about a User goes in its [Profile](/porterkit/guides/game/profile/) and in its per-User data in the Game.
+
+## Names
+
+Porter trims the whitespace at both ends of the name. What remains must not be empty and must be at most `maxNameLength` long, 20 by default, counted as JavaScript's `length` does, which is what `maxlength` counts on an HTML input. The name is stored and shown as written.
+
+Two names that differ only in case are the same: "Ana" and "ana" cannot share a room.
+
+## Why a login is refused
+
+| `reason`         | When                                                                                                    |
+| ---------------- | ------------------------------------------------------------------------------------------------------- |
+| `invalidName`    | The name is not a string, is empty after trimming or is too long. Also a body that is not a JSON object |
+| `invalidProfile` | The Profile is too large or your validator refuses it, and so does the fallback when there is one       |
+| `roomNotFound`   | No room has that `roomId`, or `roomId` is present and not a valid id                                    |
+| `roomLocked`     | The room is [locked](/porterkit/guides/rooms/control/#locking)                                          |
+| `roomFull`       | The room holds `capacity` Users already, 16 by default                                                  |
+| `nameTaken`      | Someone in the room has that name                                                                       |
+| `failed`         | The login creates a room and the initial Game's `defaultSettings()` failed                              |
+
+A login that deserves several gets the first of this order. The client resolves `login()` with `{ ok: false, reason }` for each of them and rejects only when the request itself fails. `failed` is a rejection like the others; trying again is up to the front.
+
+Capacity counts every User in the room: connected, away, and logged in but not yet connected.
+
+## After the login
+
+A User that has logged in is not yet visible to anyone. It becomes visible when it connects, and its Grace period, 20 seconds by default, is already running: a User that never connects leaves without anyone hearing of it.
+
+## The Token
+
+The login returns a Token, which proves the User is that User in that room. It is an opaque string: store it and send it back unchanged. It has no secret and no expiry, and it is worth nothing once its User has left the room. The server verifies it by finding its User in its room.
+
+The client stores it for you ([The Token](/porterkit/guides/client/connection/#the-token)) and sends it on every connection: as the query parameter `token` on WebSocket and SSE, and as `Authorization: Bearer` on `POST /porter/commands`. It belongs to no transport.
+
+A refused Token closes the connection for good, with one of three reasons:
+
+| `reason`       | When                                                                                        |
+| -------------- | ------------------------------------------------------------------------------------------- |
+| `invalidToken` | The Token is missing or malformed                                                           |
+| `roomNotFound` | Its room no longer exists                                                                   |
+| `notInRoom`    | The room exists and nobody in it holds that Token, usually because its Grace period ran out |

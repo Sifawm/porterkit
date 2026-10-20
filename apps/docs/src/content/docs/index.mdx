@@ -1,0 +1,72 @@
+---
+title: Porter
+description: Real-time rooms for NestJS, with a client for the browser, React and Godot.
+template: splash
+hero:
+  tagline: Real-time rooms for NestJS. Porter logs Users into rooms, keeps their connections alive and runs each Match. You write the rules of your Games.
+  actions:
+    - text: Get started
+      link: /porterkit/start/installation/
+      icon: right-arrow
+    - text: GitHub
+      link: https://github.com/Sifawm/porterkit
+      icon: external
+      variant: minimal
+spec:
+  - docs/spec/README.md#who-does-what
+---
+
+import { Card, CardGrid, Code } from '@astrojs/starlight/components';
+import { snippet } from '../../snippet';
+import manager from '../../snippets/misfit/manager.ts?raw';
+
+## What you get
+
+<CardGrid>
+  <Card title="Rooms without accounts" icon="seti:lock">
+    A User logs in with a name and gets a Token that only works in that room. There is no secret to keep and nothing
+    expires: the Token is valid for as long as its User is in the room.
+  </Card>
+  <Card title="Connections that come back" icon="random">
+    WebSocket or SSE, chosen by the client before every attempt. A User whose connection drops keeps its place for 20
+    seconds by default, and the client retries on its own.
+  </Card>
+  <Card title="The Match is handled" icon="rocket">
+    Start, pause, continue and end, a minimum of players, Match timers that stop during a pause, and Ticks at a fixed
+    rate for Games that run in real time.
+  </Card>
+  <Card title="One games map types everything" icon="seti:typescript">
+    The server's handlers and the client's `send` and `on` are typed from the same map. A misspelled event, or data of
+    the wrong shape, does not compile.
+  </Card>
+  <Card title="An Admin in every room" icon="star">
+    Each room has exactly one Admin. When it drops, the next connected User takes over, and an Admin that comes back
+    gets the role back.
+  </Card>
+  <Card title="State the front can trust" icon="seti:json">
+    The client holds the room and the Game as immutable plain data. After every reconnection it gets the whole room
+    again, so nothing drifts.
+  </Card>
+</CardGrid>
+
+## A Game is a class with handlers
+
+The server side of a Game is a NestJS provider. Porter calls its hooks as the Match moves and delivers the messages it declares; the rest of the room is Porter's.
+
+<Code code={snippet(manager, 'handlers')} lang="ts" title="misfit.manager.ts" />
+
+## Five packages
+
+| Package                                                                        | What it is                                                  |
+| ------------------------------------------------------------------------------ | ----------------------------------------------------------- |
+| [`@porterkit/contracts`](/porterkit/reference/api/porterkit/contracts/readme/) | The types server and client share. No runtime code.         |
+| [`@porterkit/nestjs`](/porterkit/start/server/)                                | The server: one NestJS module.                              |
+| [`@porterkit/client`](/porterkit/start/client/)                                | The client: login, connection and state, with no framework. |
+| [`@porterkit/react`](/porterkit/guides/react/hooks/)                           | The client's state as React hooks.                          |
+| [`@porterkit/godot`](/porterkit/guides/godot/setup/)                           | The client as signals in a Godot web export.                |
+
+## What stays yours
+
+Porter knows the shape of a Game and never its rules. You write its settings, state and messages, the rules that run on the server, how the client applies each message, and every screen. Porter has no components and no routes on the front, and it never reads a Profile.
+
+Rooms live in the memory of one process. There is no persistence, and one room cannot span several instances of the server.

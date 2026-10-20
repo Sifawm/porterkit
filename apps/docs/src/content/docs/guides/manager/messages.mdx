@@ -1,0 +1,64 @@
+---
+title: Game messages
+description: Handlers, guards, Admin-only messages and rejections.
+sidebar:
+  order: 3
+spec:
+  - docs/spec/nestjs.md#game-messages
+  - docs/spec/nestjs.md#decorators
+  - docs/spec/nestjs.md#permissions
+---
+
+import { Code } from '@astrojs/starlight/components';
+import { snippet } from '../../../../snippet';
+import manager from '../../../../snippets/misfit/manager.ts?raw';
+import commands from '../../../../snippets/client/commands.ts?raw';
+
+A client message whose event is not one of Porter's goes to the active Game's Manager. A handler is a method that carries the Game's `On(event)`.
+
+<Code code={snippet(manager, 'handlers')} lang="ts" title="misfit.manager.ts" />
+
+A handler receives `(ctx, data, user)`, where `user` is the sender. One that does not use `data` or `user` does not declare them. A handler may be `async`.
+
+`On` comes from `handlersOf<Games, 'misfit'>()`. It checks at compile time that the event is in the Game's `client` map and that the handler's `data` has its type. It does not report a `client` event that has no handler.
+
+## The four checks
+
+Before calling a handler Porter runs four checks, in this order, and the first to fail answers the sender with `porter:messageRejected`:
+
+1. The active Game has no handler for the event: `unhandled`.
+2. The handler carries `@AdminOnly()` and the sender is not the Admin: `notAdmin`. The guard does not run.
+3. The guard refuses the data: `malformed`.
+4. No Match is under way and the handler does not carry `@AnyTime()`: `notAllowedNow`.
+
+A User who is not the Admin learns nothing from an Admin-only message: it gets `notAdmin` whatever it sent and whatever the situation.
+
+## Guards
+
+A message that carries data declares a guard, a type predicate of `(data: unknown) => data is T`:
+
+<Code code={snippet(manager, 'guards')} lang="ts" title="misfit.manager.ts" />
+
+When the guard returns `false`, Porter answers `malformed` without calling the Manager. A message without data has no guard. Porter brings no validation library; a guard is written by hand or wraps one, such as a Zod schema's `safeParse(data).success`.
+
+## Admin-only messages
+
+Every one of Porter's own commands but `porter:updateProfile` and the pong is for the Admin only. A Game message is for the Admin only when its handler carries `@AdminOnly()`; Porter checks it and never calls the handler for anyone else.
+
+## With or without a Match
+
+By default a Game message is delivered only while a Match is `running` or `paused`. `@AnyTime()` marks a handler that is also called in `idle` and `ended`, which is how a Game handles messages in the waiting room or on the results screen.
+
+## Rejecting
+
+`throw ctx.reject(reason)` refuses the message with one of the Game's own reasons: the sender receives `porter:messageRejected` with `{ code: 'game', reason }`. `reason` is typed from the Game's `rejectReason`.
+
+Anything else a handler throws, and a promise it returns that rejects, answers `failed` and is logged. No detail reaches the client.
+
+Rejections go only to the sender, and there is no correlation id: `rejected` carries the event name. [Rejections](/porterkit/reference/rejections/) lists every reason.
+
+## What a client sends
+
+<Code code={snippet(commands, 'send')} lang="ts" />
+
+Both are typed from the `client` map. The client changes nothing when it sends: it waits for the messages the handler broadcasts, or for the rejection.

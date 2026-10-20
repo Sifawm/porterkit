@@ -1,0 +1,53 @@
+---
+title: The client
+description: Create the client's instance, log in and read the room.
+sidebar:
+  order: 3
+spec:
+  - docs/spec/client.md#instance
+  - docs/spec/client.md#login-and-token
+  - docs/spec/client.md#usage
+---
+
+import { Code } from '@astrojs/starlight/components';
+import { snippet } from '../../../snippet';
+import client from '../../../snippets/misfit/client.ts?raw';
+import porter from '../../../snippets/misfit/porter.ts?raw';
+import login from '../../../snippets/client/login.ts?raw';
+import vanilla from '../../../snippets/client/vanilla.ts?raw';
+
+The client is `@porterkit/client`. It needs no framework: React and Godot read it through a Binding, and a plain page reads it directly.
+
+## The Game on the client
+
+Each Game gets a client half with `defineGame`: the shared definition plus its Appliers, one function per server message that changes state. [Appliers](/porterkit/guides/client/appliers/) explains them.
+
+<Code code={snippet(client)} lang="ts" title="misfit.client.ts" />
+
+## One instance
+
+Call `createPorter` once, in a module of its own, with your games map and your Profile type. Everything it returns is typed from those two parameters, and you write them nowhere else.
+
+<Code code={snippet(porter, 'instance')} lang="ts" title="porter.ts" />
+
+- `httpUrl` is the base of the HTTP routes, with your global prefix: `/api` gives `/api/porter/login`.
+- `wsUrl` is the full WebSocket URL, path included. The client does not derive it from `httpUrl`, because the WebSocket path ignores the global prefix.
+
+Creating the instance opens no connection and reads no storage. One instance is one User in one room at a time.
+
+## Log in, or come back
+
+<Code code={snippet(login, 'login')} lang="ts" />
+
+`resume()` reconnects with the Token kept from an earlier login and returns `false` when there is none, which makes it the first thing a page calls when it loads. `login` without a `roomId` creates a room, and its User is the Admin. It resolves as soon as the server answers, with `{ ok: true, roomId }` or `{ ok: false, reason }`, while the connection is still opening.
+
+## Read, listen and send
+
+<Code code={snippet(vanilla, 'read')} lang="ts" />
+
+- `subscribe` is called after every message that changed the state.
+- `porter.game('misfit')` returns the Game's settings, state and Match, and its Users with their data.
+- `on` is for effects: showing a toast, opening a modal, navigating. A listener sees the state already updated.
+- `send` returns `false` and sends nothing unless the connection is `connected`. It changes nothing locally: the state changes when the server announces what happened.
+
+With React, the same reads are [hooks](/porterkit/guides/react/hooks/).

@@ -18,4 +18,4 @@ var result = await Porter.login({"name": "Ana", "profile": null})
 Porter.send("increment")
 ```
 
-See the [specification](https://github.com/Sifawm/porterkit/blob/main/docs/spec/godot.md).
+See the [guide](https://sifawm.github.io/porterkit/guides/godot/setup/).

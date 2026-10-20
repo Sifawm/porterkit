@@ -1,0 +1,53 @@
+---
+title: Match timers
+description: Named countdowns that stop with a pause and end with the Match.
+sidebar:
+  order: 4
+spec:
+  - docs/spec/nestjs.md#match-timers
+  - docs/spec/protocol.md#match-timers
+---
+
+import { Code } from '@astrojs/starlight/components';
+import { snippet } from '../../../../snippet';
+import manager from '../../../../snippets/misfit/manager.ts?raw';
+
+A Match timer is a named countdown that belongs to the Match. It fires once, stops while the Match is paused and ceases to exist when the Match ends. Every User sees every timer, so the front can show a countdown without the Game sending one.
+
+<Code code={snippet(manager, 'round')} lang="ts" title="misfit.manager.ts" />
+
+## Setting and clearing
+
+- `ctx.timers.set(name, ms, callback)` creates a timer that fires once, after `ms` milliseconds. A timer of the same name is replaced.
+- `ctx.timers.clear(name)` removes it. Clearing a timer that does not exist does nothing.
+
+There are no intervals, and no way to ask whether a timer exists or how long it has left. A Game with no time limit does not create the timer.
+
+`set` throws in three cases: without a Match under way, inside `onEnd` (the timers are already gone by then), and with an `ms` that is not finite and greater than zero. After an `await` the Match may have ended, so a `set` there may throw. In a handler the sender then gets `failed`; anywhere else it is only logged.
+
+## Pause and end
+
+With the Match `running`, a new timer starts at once. With the Match `paused`, it is created stopped and starts when the Match continues.
+
+Every timer stops while the Match is paused, and there is no option per timer. A Game that needs a clock a pause does not stop uses `setTimeout` and clears it in `onEnd`.
+
+When the Match ends, all its timers are cancelled. When the room ceases to exist, they go with it.
+
+## When one fires
+
+Porter removes the timer and announces `porter:timerCleared` before it calls the callback, so the callback may set a timer of the same name again. A callback never runs with the Match paused or over.
+
+A callback may be `async`. If it throws or its promise rejects, Porter logs it, the Match goes on and no client hears of it.
+
+## What clients receive
+
+| Event                 | When                                                             |
+| --------------------- | ---------------------------------------------------------------- |
+| `porter:timerSet`     | A timer was created or replaced, with its remaining milliseconds |
+| `porter:timerCleared` | A timer was cleared or fired                                     |
+
+A pause, a continue and the end of the Match carry no timer data. Each client freezes its timers on `porter:matchPaused`, resumes them on `porter:matchContinued` and drops them on `porter:matchEnded`.
+
+On the wire a timer is always the milliseconds left at the moment of sending, never an absolute time, so the client's clock does not need to agree with the server's. A User who connects mid-Match gets every timer's remaining time in `porter:joined`.
+
+To show a countdown, read the timer on the client: [`timer(name)`](/porterkit/guides/client/instance/#match-timers), [`useTimer`](/porterkit/guides/react/timers/) or [`timer_remaining`](/porterkit/guides/godot/scenes/#calls).

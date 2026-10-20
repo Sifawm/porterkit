@@ -1,0 +1,29 @@
+---
+title: Testing a front
+description: Run the real client against a fake server in your tests.
+sidebar:
+  order: 1
+spec:
+  - docs/spec/client.md#testing
+---
+
+import { Code } from '@astrojs/starlight/components';
+import { snippet } from '../../../../snippet';
+import test from '../../../../snippets/testing/front.test.ts?raw';
+
+`@porterkit/client/testing` lets the tests of a front, or of a Binding, run the real client and stand in for the server. It has two pieces:
+
+- `FakeSocket`, a WebSocket whose other end the test drives: `emit(event, data)` sends a server message, `drop()` drops the connection, and `sent` holds what the client sent. `FakeSocket.all` lists every socket opened, oldest first, and `FakeSocket.last` is the newest.
+- `memoryStorage()`, a `storage` option that keeps what the client stores in a `Map`, exposed as `map`.
+
+The entry imports no test runner. Put `FakeSocket` in place of the global `WebSocket` with whatever your runner offers, and empty `FakeSocket.all` before each test. This one uses Vitest:
+
+<Code code={snippet(test, 'test')} lang="ts" title="round.test.ts" />
+
+A test that needs no login stores a Token in a `memoryStorage()` under the key `porter` and calls `resume()`. The client opens a `FakeSocket`, and `emit('porter:joined', …)` makes it `connected`. From there every `emit` goes through the client as a real message would: Appliers, subscribers and listeners.
+
+The same works under a Binding. With React, render the components with Testing Library and drive the socket the same way.
+
+`FakeSocket` covers the WebSocket transport only. There is no fake of the SSE stream and none of `fetch`, so a test of `login()` stubs `fetch` itself.
+
+The server has no testing entry. To test a Manager, start a NestJS application with it and drive it with the client from Node, over WebSocket or SSE: the client needs nothing from a browser.

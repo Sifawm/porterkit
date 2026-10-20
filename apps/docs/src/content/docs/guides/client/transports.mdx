@@ -1,0 +1,47 @@
+---
+title: Transports
+description: WebSocket, SSE, and choosing between them on every attempt.
+sidebar:
+  order: 3
+spec:
+  - docs/spec/client.md#transport
+  - docs/spec/protocol.md#transports
+  - docs/spec/protocol.md#post-portercommands
+  - docs/adr/0001-two-transports.md
+---
+
+import { Code } from '@astrojs/starlight/components';
+import { snippet } from '../../../../snippet';
+import transport from '../../../../snippets/client/transport.ts?raw';
+
+Porter has two transports, WebSocket and SSE, over the same connection lifecycle. The server always offers both, and the messages and their order are the same on each. The client picks one every time it connects.
+
+## WebSocket
+
+The default. The client opens `wsUrl` with the Token in the query parameter `token`, and every message in either direction is one frame of JSON text. It is the transport for a Game with [Ticks](/porterkit/guides/manager/ticks/), or anything else where latency matters.
+
+## SSE
+
+Porter has SSE for phones: on real devices, holding a WebSocket open made them run hot and drained the battery, and moving mobile clients to SSE removed the problem. The server's messages arrive on a stream from `GET /porter/events`; each message the client sends is one `POST /porter/commands` with the Token as `Authorization: Bearer`.
+
+<Code code={snippet(transport, 'sse')} lang="ts" />
+
+With `transport: 'sse'` the client needs no `wsUrl`.
+
+Over SSE the client posts its messages one at a time, each once the one before has been answered, so they reach the server in order. The answer to each `POST` is only `202`: the outcome arrives on the stream, as an announcement or as `porter:messageRejected`. Each message costs a round trip, which a User of a real-time Game feels.
+
+The client reads the stream with `fetch` and a parser of its own, not `EventSource`, so the same code runs in a browser and in Node without a polyfill, and the only retry is the client's own. Before its first message the server sends one padding event of 2048 spaces, which makes an intermediary that buffers small responses release the stream.
+
+## Choosing on every attempt
+
+`transport` can be a function, called before every connection attempt. Its result is the transport of that attempt.
+
+<Code code={snippet(transport, 'fallback')} lang="ts" />
+
+`attempt` counts the failed attempts in a row before this one. It is `0` on the first attempt after `login()`, `resume()` or `reconnect()`, and on the first after a drop while `connected`; it goes up by one with every failure and returns to `0` after `porter:joined`. The function above tries WebSocket three times and then SSE. After the next `porter:joined` it tries WebSocket again; a function that wants to stay on SSE remembers that itself.
+
+The client has no policy of its own. It detects no device and falls back to nothing unless your function does. A reconnection may use a different transport from the connection it replaces: the Token belongs to no transport, so a User may drop on one and come back on the other.
+
+## Which one
+
+The Games Porter was extracted from use SSE for every mobile User and WebSocket on desktop. A Game with Ticks uses WebSocket everywhere. Porter detects no device, so a policy like that is a `transport` function of yours.

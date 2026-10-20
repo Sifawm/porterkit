@@ -1,0 +1,59 @@
+---
+title: Hooks
+description: The client's state as React hooks.
+sidebar:
+  order: 1
+spec:
+  - docs/spec/react.md#hooks
+  - docs/spec/react.md#reading
+  - docs/spec/react.md#what-stays-with-the-integrator
+---
+
+import { Code } from '@astrojs/starlight/components';
+import { snippet } from '../../../../snippet';
+import porter from '../../../../snippets/misfit/porter.ts?raw';
+import app from '../../../../snippets/react/app.tsx?raw';
+import round from '../../../../snippets/react/round.tsx?raw';
+
+`@porterkit/react` reads the client through hooks. It is given the client's instance and adds nothing to it: login, sending and leaving still go through the instance.
+
+<Code code={snippet(porter)} lang="ts" title="porter.ts" />
+
+`createHooks(porter)` returns the hooks of that instance, typed from it, so the type parameters stay written only at `createPorter`. Call it once, next to `createPorter`. There is no Provider: the hooks read their instance from any component.
+
+| Hook                        | Returns                                                                    |
+| --------------------------- | -------------------------------------------------------------------------- |
+| `useConnection()`           | The connection                                                             |
+| `useRoom()`                 | The room                                                                   |
+| `useGame(name)`             | What `porter.game(name)` returns; throws if another Game is active         |
+| `useGame()`                 | The same for whichever Game is active, discriminated by `name`             |
+| `useTimer(name)`            | A Match timer, or `null` ([Match timers](/porterkit/guides/react/timers/)) |
+| `useEvent(event, listener)` | Nothing; calls `listener` on every such event                              |
+
+Each hook reads the same value as the member of the instance it is named after, and re-renders when it changes.
+
+## Guard on the connection
+
+`useRoom()` and `useGame()` throw while there is no room: before the first `porter:joined` and after `leave()`. Render them below a check that the connection is `connected`. `leave()` changes the connection in the same notification, so such a tree never renders them without a room.
+
+<Code code={snippet(app, 'app')} lang="tsx" title="App.tsx" />
+
+`resume()` in an effect is safe under StrictMode, which runs the effect twice. Porter exports no guard component; this check is the guard.
+
+## A screen
+
+<Code code={snippet(round, 'round')} lang="tsx" title="Round.tsx" />
+
+`useEvent` is for effects: navigating, opening a modal, showing a toast, or showing the rejection of a message this component sent. It always calls the latest listener passed, without subscribing again on every render.
+
+## Renders
+
+Every hook that reads state re-renders after every message that changed something; there are no selectors. The state keeps the identity of whatever did not change, so `memo` on any piece of it is safe and skips the components whose piece stayed the same.
+
+## What stays in your components
+
+- Drafts are component state: settings being edited, an answer being typed.
+- Effects go in `useEvent`. What a component keeps from `useEvent` in its own state is lost on reconnecting, because `porter:joined` replaces the room and replays nothing.
+- What must survive a reconnection belongs in the Game's state, on the server.
+
+The instance stays yours, and may be handed to another Binding at the same time.

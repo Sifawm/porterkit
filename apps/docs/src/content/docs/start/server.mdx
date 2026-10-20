@@ -1,0 +1,63 @@
+---
+title: The server
+description: Add Porter to a NestJS application.
+sidebar:
+  order: 2
+spec:
+  - docs/spec/nestjs.md#module
+  - docs/spec/nestjs.md#registering-a-game
+  - docs/spec/protocol.md#http-routes
+---
+
+import { Code } from '@astrojs/starlight/components';
+import { snippet } from '../../../snippet';
+import appModule from '../../../snippets/server/app.module.ts?raw';
+import main from '../../../snippets/server/main.ts?raw';
+import gameModule from '../../../snippets/misfit/module.ts?raw';
+
+Porter is one module, `PorterModule`, with a single required option: the Game every new room starts with.
+
+<Code code={snippet(appModule)} lang="ts" title="app.module.ts" />
+
+`Games` is your games map, the type that lists every Game and its messages ([Games map](/porterkit/guides/game/games-map/)). Passing it to `forRoot` is what checks that `'misfit'` names one of them.
+
+## Register a Game
+
+A Game is registered by its Manager, a provider that carries `@GameManager`. Put it in the `providers` of any module of the application, and Porter finds it when the application starts:
+
+<Code code={snippet(gameModule)} lang="ts" title="misfit.module.ts" />
+
+The Game's module does not import `PorterModule`, and nothing of Porter's is injected anywhere: `PorterModule` exports no provider. [Writing a Manager](/porterkit/guides/manager/manager/) covers what goes in the class.
+
+## The application
+
+Porter needs the WebSocket adapter of `@nestjs/platform-ws`. Set it in `main.ts`, before the application starts listening:
+
+<Code code={snippet(main)} lang="ts" title="main.ts" />
+
+CORS, the global prefix, the platform and the port stay yours. Porter's WebSocket gateway shares the application's HTTP server and declares no port of its own.
+
+## What Porter adds
+
+| Route                    | Purpose                                       |
+| ------------------------ | --------------------------------------------- |
+| `POST /porter/login`     | Creates or joins a room and issues the Token  |
+| `HEAD /porter/rooms/:id` | Tells whether a room exists                   |
+| `GET /porter/events`     | Opens a connection over SSE                   |
+| `POST /porter/commands`  | Client messages for a User connected over SSE |
+| `/porter/ws`             | Opens a connection over WebSocket             |
+
+The paths are fixed. The four HTTP routes sit under your global prefix or `RouterModule`; `/porter/ws` ignores the prefix. With `app.setGlobalPrefix('api')`, the login is at `/api/porter/login` and the WebSocket is still at `/porter/ws`. That is why the client takes [two addresses](/porterkit/start/client/).
+
+Both transports are always on; there is no option to switch one off.
+
+## When the application does not start
+
+Porter checks its configuration once, when the application boots, and refuses to start on any of these:
+
+- an option with an invalid value (see [Configuration](/porterkit/reference/configuration/));
+- two Managers for the same Game;
+- a Game with a `tickRate` whose Manager has no `onTick`, or the reverse;
+- an `initialGame` that names no registered Game, or no Manager registered at all.
+
+The error names the option, the Game or the classes involved.

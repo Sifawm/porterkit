@@ -1,0 +1,21 @@
+---
+title: Match timers in React
+description: Show a countdown from a Match timer.
+sidebar:
+  order: 2
+spec:
+  - docs/spec/react.md#match-timers
+  - docs/spec/client.md#match-timers
+---
+
+import { Code } from '@astrojs/starlight/components';
+import { snippet } from '../../../../snippet';
+import countdown from '../../../../snippets/react/countdown.tsx?raw';
+
+`useTimer(name)` returns the Match timer of that name, or `null` when the active Match has none. Like every hook it re-renders after messages that change the state, and never while the timer counts down.
+
+<Code code={snippet(countdown, 'countdown')} lang="tsx" title="Countdown.tsx" />
+
+The refresh is the component's own. It calls `remaining()` on an interval of its choosing, so a countdown re-renders only its own component and never goes through the client's state. While the Match is paused, `remaining()` returns the same value every time and `paused` is `true`.
+
+The timer's name is a plain string, the one the Manager passed to [`ctx.timers.set`](/porterkit/guides/manager/timers/).

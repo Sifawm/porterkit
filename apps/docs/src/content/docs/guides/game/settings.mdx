@@ -1,0 +1,41 @@
+---
+title: Settings
+description: Default settings, the Admin's updates and their validation.
+sidebar:
+  order: 2
+spec:
+  - docs/spec/nestjs.md#settings
+  - docs/spec/protocol.md#settings
+---
+
+import { Code } from '@astrojs/starlight/components';
+import { snippet } from '../../../../snippet';
+import manager from '../../../../snippets/misfit/manager.ts?raw';
+import vanilla from '../../../../snippets/client/vanilla.ts?raw';
+
+A Game has one settings type, declared in the games map. The Admin changes them; the Manager decides what is valid.
+
+<Code code={snippet(manager, 'settings')} lang="ts" title="misfit.manager.ts" />
+
+## Default settings
+
+`defaultSettings()` takes no context and may be `async`, so it can ask an injected service. Porter calls it when a room is created with the Game and when a room changes to it. Its result is trusted as it is and does not go through `updateSettings`.
+
+When it throws or its promise rejects, nothing of the room changes and the error is logged. On a login that creates a room, the login fails with `failed` and no room exists. On a change of Game, the Admin gets `failed` and the room keeps its previous Game.
+
+## Updating them
+
+The Admin sends `porter:updateSettings` with the complete settings, not a patch:
+
+<Code code={snippet(vanilla, 'admin')} lang="ts" />
+
+Porter checks only that the data is an object, then calls `updateSettings(ctx, next)`. `next` is whatever the Admin sent. The Manager validates it and writes into `ctx.game.settings` with `set`, or throws `ctx.reject(reason)`.
+
+- When `updateSettings` returns, Porter announces `porter:settingsUpdated` to everyone with the settings as they are then. They may differ from what was sent: a field the server computes is kept by the Manager, which does not take it from `next`.
+- When it throws `ctx.reject(reason)`, the Admin gets `porter:messageRejected` with `{ code: 'game', reason }` and nothing is announced. Anything else thrown gets `failed` and is logged.
+
+Settings can be updated at any time, with or without a Match under way. `updateSettings` is synchronous: anything it does after an `await` happens after the announcement.
+
+## On the client
+
+`porter:settingsUpdated` replaces the settings in the client's state, so `game.settings` is always the server's. A form that edits them keeps its draft in its own state and sends the whole object when the Admin confirms.

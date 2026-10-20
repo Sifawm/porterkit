@@ -10,4 +10,4 @@ export const porter = createPorter<Games, Profile>({
 });
 ```
 
-See the [specification](https://github.com/Sifawm/porterkit/blob/main/docs/spec/client.md).
+See the [guide](https://sifawm.github.io/porterkit/start/client/).

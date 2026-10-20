@@ -1,6 +1,6 @@
 # Monorepo
 
-Where the five packages live, how they are built, tested and checked, and how they are published. What each package exports is in [contracts.md](contracts.md), [nestjs.md](nestjs.md), [client.md](client.md), [react.md](react.md) and [godot.md](godot.md).
+Where the five packages and the documentation site live, how they are built, tested and checked, and how they are published. What each package exports is in [contracts.md](contracts.md), [nestjs.md](nestjs.md), [client.md](client.md), [react.md](react.md) and [godot.md](godot.md).
 
 ## Layout
 
@@ -17,11 +17,12 @@ One Nx 23 workspace over pnpm workspaces and TypeScript project references. Ther
 | `examples/server` | `@porterkit/example-server` | no (`private: true`) |
 | `examples/web` | `@porterkit/example-web` | no (`private: true`) |
 | `examples/godot` | `@porterkit/example-godot` | no (`private: true`) |
+| `apps/docs` | `@porterkit/docs` | no (`private: true`) |
 | root | `@porterkit/source` | no |
 
-- `pnpm-workspace.yaml` lists `packages/*` and `examples/*`.
+- `pnpm-workspace.yaml` lists `packages/*`, `examples/*` and `apps/*`.
 - A project's Nx name is the `name` of its `package.json`. A project has no `project.json` unless it needs a target Nx cannot infer.
-- Root files: `README.md`, `LICENSE`, `CHANGELOG.md`, `CONTEXT.md`, `AGENTS.md` with `CLAUDE.md` as a link to it, and `docs/` with `adr/` and `spec/`. There is no documentation site.
+- Root files: `README.md`, `LICENSE`, `CHANGELOG.md`, `CONTEXT.md`, `AGENTS.md` with `CLAUDE.md` as a link to it, and `docs/` with `adr/` and `spec/`. The documentation site is `apps/docs` (see "Documentation site").
 - Each published package has a short `README.md` and its own written copy of `LICENSE`. No step copies them.
 
 ## Packages
@@ -58,7 +59,7 @@ One Nx 23 workspace over pnpm workspaces and TypeScript project references. Ther
 ## TypeScript
 
 - One TypeScript version, at the root. `strict` is on in `tsconfig.base.json`.
-- `experimentalDecorators` and `emitDecoratorMetadata` are on only in `packages/nestjs` and `examples/server`.
+- `experimentalDecorators` and `emitDecoratorMetadata` are on only in `packages/nestjs` and `examples/server`. `apps/docs` turns on `experimentalDecorators` to typecheck its server snippets.
 - The `tsconfig` of `packages/contracts` includes neither Node nor DOM typings. Its `typecheck` is what keeps the package safe for a browser.
 
 ## Example
@@ -69,8 +70,18 @@ A private example of four projects that uses the packages as an Integrator would
 - `examples/server`: NestJS on Fastify with `@nestjs/platform-ws`. Its `main.ts` sets the WebSocket adapter. `PorterModule.forRoot` takes values written in code: no `@nestjs/config` and no `.env`.
 - `examples/web`: Vite and React, on `@porterkit/client` and `@porterkit/react`, with no router and no component library. Login, waiting room and Match in one tree. The login screen has a selector of transport, WebSocket or SSE.
 - `examples/godot`: the same Game drawn by Godot, with nothing of React: a page of Vite whose only code creates the instance, calls `exposeToGodot` and starts the engine, and a Godot project in `game/` with login, waiting room and Match in one script. `game/addons/porter` is a link to the addon in `packages/godot`.
-- `pnpm dev` at the root starts server and web.
+- `pnpm dev` at the root starts server, web and the documentation site.
 - The Godot example needs Godot 4.7 with its web export templates, which CI does not have. `pnpm --filter @porterkit/example-godot export` writes the export into `public/godot`, which is not versioned, and `pnpm --filter @porterkit/example-godot start` serves the page. Neither is part of `pnpm dev` or of `pnpm check`; `pnpm check` only typechecks the page's TypeScript, like any project.
+
+## Documentation site
+
+`apps/docs` is a Starlight site on Astro for Integrators: what Porter does and how to use it, in English. This specification stays the normative source and the site is written from it.
+
+- Each page lists in its frontmatter `spec` the sections it covers, as paths from the repository root with the heading's anchor (`docs/spec/nestjs.md#ticks`). The `docs` skill in `.claude/skills/docs` keeps the pages in step, and runs the `humanizer` plugin, declared in `.claude/settings.json`, over the prose it changes.
+- Code that uses the API is in `apps/docs/src/snippets`, as files the site's `typecheck` target compiles against the workspace packages; a page shows a region of one. The tests among them run in its `test` target.
+- The API reference is generated on every build by `starlight-typedoc` from `src/index.ts` of the five packages, and is not versioned.
+- `build` depends on `^build` and fails on an internal link or anchor that does not exist (`starlight-links-validator`).
+- The site is published to GitHub Pages at `https://sifawm.github.io/porterkit/`, so it describes the version on npm.
 
 ## Tests
 
@@ -106,12 +117,13 @@ Vitest everywhere. There is no Jest, no Playwright and no coverage threshold.
 - `nx release` versions and publishes `packages/*` only, as one fixed group. The version comes from conventional commits. It writes one `CHANGELOG.md` at the root and tags `vX.Y.Z`. There is no semantic-release.
 - Releases are published from GitHub Actions with npm trusted publishing (OIDC) and signed provenance. No npm token is stored. Each of the five packages trusts the repository `Sifawm/porterkit` and the workflow `release.yml`.
 
-Two workflows, both started by hand:
+Three workflows. `ci.yml` and `release.yml` are started by hand; `docs.yml` follows a release:
 
 | Workflow | Runs |
 |---|---|
 | `ci.yml` | `pnpm check` on a matrix of Node 22 and 24. No `nx affected`, no Nx Cloud |
 | `release.yml` | on Node 24, `pnpm check` and then `nx release` |
+| `docs.yml` | after `release.yml` succeeds, and by hand: builds `apps/docs` and publishes it to GitHub Pages |
 
 `ci.yml` has no pull-request or push trigger. Adding them is a later decision and changes nothing else here.
 

@@ -1,0 +1,39 @@
+---
+title: The Admin
+description: Who the Admin is, who takes over when it drops, and how it comes back.
+sidebar:
+  order: 2
+spec:
+  - docs/spec/nestjs.md#admin
+  - docs/spec/nestjs.md#permissions
+---
+
+Every room has exactly one Admin: the one User allowed to change the room and run its Matches. Only Porter changes who it is; a Manager cannot.
+
+The Admin alone may lock the room, remove a User, change the Game, update the settings, and start, pause, continue or end a Match. A Game marks its own Admin-only messages with [`@AdminOnly()`](/porterkit/guides/manager/messages/#admin-only-messages). On the client, `room.isAdmin` tells whether this User is it.
+
+## Taking over
+
+The first User of a room is its Admin from the moment it logs in.
+
+As soon as the Admin's connection drops, without waiting for its Grace period, the Admin becomes the first `connected` User in the order they joined. If nobody is connected, the Admin stays the Admin, and the first User to connect while it is still away takes over.
+
+An Admin that has logged in and not yet connected counts as one whose connection dropped: if another User connects first, that User becomes the Admin.
+
+## Coming back
+
+Porter keeps, per room, the Admin line: the Users that have been its Admin, in the order they became it. A User that comes back within its Grace period becomes the Admin again if it is earlier in the line than the current Admin, and those behind it leave the line.
+
+A drops and B becomes Admin; B drops and C becomes Admin. If B comes back, B is the Admin; if A then comes back, A is. If A comes back first, A is the Admin, and B does not get it back on returning.
+
+A User that leaves the room leaves the line. Someone who logs in later with the same name is a new User.
+
+## When the Admin leaves and nobody is connected
+
+The Admin becomes the first User left in the order they joined, those away ahead of those not yet connected. That User is away too, so the rules above apply to it: the first User to connect becomes the Admin, and if that is the new Admin itself, it stays the Admin. It joins the line like any Admin.
+
+A, B and C join and C has not connected yet. A is the Admin, and A and B drop. When A's Grace period runs out, the Admin is B, not C. If C connects before B comes back, C is the Admin; if B then comes back within its Grace period, B is the Admin again.
+
+## What clients see
+
+Every change is announced to everyone with `porter:adminChanged`. A User that connects or comes back reads the Admin in `porter:joined`. The client updates `room.admin` every time, so a front should not assume the Admin stays the same.

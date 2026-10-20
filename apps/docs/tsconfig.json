@@ -1,0 +1,22 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "out-tsc",
+    "emitDeclarationOnly": true,
+    "module": "preserve",
+    "moduleResolution": "bundler",
+    "lib": ["es2023", "dom", "dom.iterable"],
+    "jsx": "react-jsx",
+    "experimentalDecorators": true,
+    "types": ["node"]
+  },
+  "include": ["src/snippets/**/*.ts", "src/snippets/**/*.tsx"],
+  "references": [
+    { "path": "../../packages/contracts" },
+    { "path": "../../packages/nestjs" },
+    { "path": "../../packages/client" },
+    { "path": "../../packages/react" },
+    { "path": "../../packages/godot" },
+    { "path": "../../examples/game" }
+  ]
+}

@@ -1,0 +1,73 @@
+---
+title: Scenes
+description: Read the room from GDScript, listen to events and send messages.
+sidebar:
+  order: 2
+spec:
+  - docs/spec/godot.md#the-addon
+  - docs/spec/godot.md#state
+  - docs/spec/godot.md#calls
+  - docs/spec/godot.md#usage
+---
+
+The autoload `Porter` holds three variables and emits one signal for each:
+
+```gdscript
+signal connection_changed(connection: Dictionary)
+signal room_changed(room: Variant)    # null while there is no room
+signal game_changed(game: Variant)    # null while there is no room
+
+var connection: Dictionary            # { "status": "idle" } at the start
+var room: Variant
+var game: Variant
+```
+
+They are what the instance's `connection`, `room` and `game()` give, as Dictionaries. `room` and `game` are `null` where the instance has no room, and reading `game` never throws.
+
+```gdscript
+func _ready() -> void:
+	Porter.game_changed.connect(_draw)
+	Porter.on("roundEnded", _show_answers)
+	if not Porter.resume():
+		var result = await Porter.login({"name": "Ana", "profile": {"avatar": "fox"}})
+		if result == null or not result.ok:
+			return _show_login_error(result)
+
+func _process(_delta: float) -> void:
+	$Clock.text = str(ceili(Porter.timer_remaining("round") / 1000))
+
+func _answer(text: String) -> void:
+	Porter.send("answer", {"answer": text})
+```
+
+## State
+
+The addon reads the three parts when it loads, before any scene exists. A scene reads the variables in its `_ready` and connects the signals for what comes after.
+
+After every change of the instance, the addon replaces the parts whose JSON changed and then emits their signals, in the order `connection_changed`, `room_changed`, `game_changed`. A listener of any of them reads all three already updated, so `connected` never arrives without its room.
+
+A part whose JSON did not change emits nothing. A Game message that changes only the Game's state or settings does not emit `room_changed`. One that changes per-User data emits both, since the room's Users carry their data.
+
+Every value has been through JSON, and nothing is typed from the games map:
+
+- A number is a `float`, also when it is whole on the server.
+- An object is a `Dictionary`, a list an `Array`.
+- `match` is a GDScript keyword, so the Match is read as `game["match"]`.
+
+## Calls
+
+| Method                               | What it does                                                                                        |
+| ------------------------------------ | --------------------------------------------------------------------------------------------------- |
+| `login(request)`                     | Awaited. `{ "ok": true, "roomId" }`, `{ "ok": false, "reason" }`, or `null` when the request failed |
+| `room_exists(room_id)`               | Awaited. A `bool`, or `null` when the request failed                                                |
+| `resume()`, `reconnect()`, `leave()` | The instance's own, with the same results                                                           |
+| `send(event, data)`                  | Sends `data`; no data when it is `null` or left out. Returns what the instance's `send` returns     |
+| `on(event, listener)`                | Calls `listener` with each such event's data, `null` when it has none; returns a number for `off`   |
+| `off(listener)`                      | Takes that listener off                                                                             |
+| `timer_remaining(name)`              | Milliseconds left on that Match timer, or `-1` when there is none                                   |
+
+Several `login` or `room_exists` awaited at once each get their own answer. There is no listener for every event.
+
+`timer_remaining` is a plain number, cheap enough to call on every frame. Whether the timer is stopped is `game["match"].status == "paused"`.
+
+An event name or a data shape that is wrong is not caught in GDScript: the server rejects it, and the rejection arrives as `porter:messageRejected`, which a scene can listen to with `on`.

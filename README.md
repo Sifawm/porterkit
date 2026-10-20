@@ -10,7 +10,7 @@ A library for real-time rooms. Porter logs Users into rooms, keeps their connect
 | [`@porterkit/react`](packages/react)         | The Binding for React: the client's state as hooks. |
 | [`@porterkit/godot`](packages/godot)         | The Binding for Godot: signals in a web export.     |
 
-The specification is in [docs/spec](docs/spec/README.md), the decisions behind it in [docs/adr](docs/adr) and the vocabulary in [CONTEXT.md](CONTEXT.md).
+The documentation for Integrators is at [sifawm.github.io/porterkit](https://sifawm.github.io/porterkit/). For contributors, the specification is in [docs/spec](docs/spec/README.md), the decisions behind it in [docs/adr](docs/adr) and the vocabulary in [CONTEXT.md](CONTEXT.md).
 
 ## Development
 
@@ -18,7 +18,7 @@ Node 24 and pnpm.
 
 ```sh
 pnpm install
-pnpm dev     # the example server on :3000 and the example front
+pnpm dev     # the example server on :3000, the example front and the docs site
 pnpm check   # format, lint, dependencies, typecheck, build and every test
 ```
 

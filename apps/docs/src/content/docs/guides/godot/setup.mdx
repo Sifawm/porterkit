@@ -1,0 +1,51 @@
+---
+title: Setting up Godot
+description: The facade on the page and the addon in the Godot project.
+sidebar:
+  order: 1
+spec:
+  - docs/spec/godot.md#purpose
+  - docs/spec/godot.md#setting-up
+  - docs/adr/0008-godot-crosses-in-json.md
+---
+
+import { Code } from '@astrojs/starlight/components';
+import { snippet } from '../../../../snippet';
+import page from '../../../../snippets/godot/page.ts?raw';
+
+`@porterkit/godot` lets a Game made in Godot and exported for the web read the client. It has two halves, published together:
+
+- the facade, in TypeScript: `exposeToGodot(porter)` leaves an object in the page that speaks only in JSON and plain values;
+- the addon, in GDScript: `addons/porter/porter.gd`, an autoload that reads the facade and turns it into signals and methods.
+
+It works only in a web export, in the same document as the client. A Game in an iframe and a native export are out. The addon is tested against Godot 4.7; Godot 3 is out.
+
+The Game's definition and its Appliers stay in TypeScript, on the page, even when Godot draws everything. GDScript reads the state already applied and never changes it.
+
+## The page
+
+The page creates the instance, calls `exposeToGodot(porter)` and only then starts the engine:
+
+<Code code={snippet(page, 'page')} lang="ts" title="main.ts" />
+
+The facade lives at `globalThis.porterGodot`. The name is fixed, and a second call replaces the first. `exposeToGodot` changes nothing in the instance, which the page may keep using or give to another Binding.
+
+## The addon
+
+1. Copy or link `node_modules/@porterkit/godot/addons/porter` into the `addons` directory of your Godot project.
+2. In Project Settings, add `addons/porter/porter.gd` as an autoload named `Porter`.
+
+There is no editor plugin to enable. The addon looks for the facade once, when it loads. Without one, because the page did not call `exposeToGodot` or the project is running outside a browser, it logs an error and its methods fail.
+
+The example in `examples/godot` links it. If your export does not pack a linked addon, copy the directory instead.
+
+## Exporting
+
+Export the project for the web with Godot's own templates, and serve the files it writes from the page that runs `main.ts`. Godot's loader defines the global `Engine` the page calls. The example in the repository does it with:
+
+```sh
+pnpm --filter @porterkit/example-godot export   # writes public/godot
+pnpm --filter @porterkit/example-godot start    # serves the page
+```
+
+Next: [reading the room from a scene](/porterkit/guides/godot/scenes/).
