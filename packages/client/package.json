@@ -1,6 +1,6 @@
 {
   "name": "@porterkit/client",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Porter's client: login, connection and state, for any Binding.",
   "license": "MIT",
   "repository": {

@@ -1,6 +1,6 @@
 {
   "name": "@porterkit/nestjs",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Porter's server: real-time rooms as a NestJS module.",
   "license": "MIT",
   "repository": {

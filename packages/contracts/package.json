@@ -1,6 +1,6 @@
 {
   "name": "@porterkit/contracts",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "The types Porter's server and client share.",
   "license": "MIT",
   "repository": {

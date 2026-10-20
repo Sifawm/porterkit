@@ -1,6 +1,6 @@
 {
   "name": "@porterkit/godot",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Porter's Binding for Godot: the client as signals in a web export.",
   "license": "MIT",
   "repository": {

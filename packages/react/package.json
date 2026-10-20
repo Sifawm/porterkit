@@ -1,6 +1,6 @@
 {
   "name": "@porterkit/react",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Porter's Binding for React: the client's state as hooks.",
   "license": "MIT",
   "repository": {
